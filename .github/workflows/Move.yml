@@ -1,7 +1,7 @@
 name: Sync Assets and Code from Original Repo
 
 on:
-  workflow_dispatch: # Allows you to trigger this manually from the Actions tab
+  workflow_dispatch: 
 
 permissions:
   contents: write
@@ -19,26 +19,20 @@ jobs:
           git clone --branch v2-bypass-clean https://github.com/satyabratadey10-a11y/TurnIt-IDE.git temp_old_repo
           
           echo "Syncing files to current repository..."
-          # rsync copies everything EXCEPT the old .git history to avoid conflicts
           rsync -av --exclude='.git' --exclude='.github' temp_old_repo/ ./
           rm -rf temp_old_repo
 
-      - name: Commit and push assets
+      - name: Commit and push everything
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          # Force tracking of the assets folder as requested
-          git add app/src/main/assets/
-          
-          # CRITICAL ADDITION: We must also add the source code and JNI libs
-          # If we only add assets, your new ShellEngine.kt and libproot.so will be left behind.
-          git add app/src/main/java/
-          git add app/src/main/jniLibs/
+          # THE FIX: This single command adds ALL root files, Gradle wrappers, and app source code
+          git add -A
           
           if ! git diff --cached --quiet; then
-            git commit -m "chore: Bundle Ubuntu RootFS and static PRoot via CI/CD"
+            git commit -m "chore: Full repository migration including Gradle build files"
             git push
           else
-            echo "No asset changes detected; skipping commit and push."
+            echo "No changes detected; skipping commit and push."
           fi
