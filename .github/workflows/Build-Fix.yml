@@ -1,0 +1,77 @@
+name: TurnIt-IDE Native Build (Fix)
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch or tag to build"
+        required: true
+        default: "main"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.inputs.ref || github.ref }}
+    
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        cache: gradle
+        
+    - name: Compile lib7zr.so (Android ARM64) via NDK
+      run: |
+        echo "Downloading p7zip source..."
+        wget -q -O p7zip.tar.bz2 https://sourceforge.net/projects/p7zip/files/p7zip/16.02/p7zip_16.02_src_all.tar.bz2
+        tar -xf p7zip.tar.bz2
+        cd p7zip_16.02
+        
+        echo "Patching Bionic libc missing getpass..."
+        sed -i 's/getpass("")/""/g' CPP/7zip/UI/Console/UserInputUtils.cpp
+        
+        # Use the generic CPU makefile
+        cp makefile.linux_any_cpu makefile.machine
+        
+        echo "Patching Android NDK Linker (Removing -lpthread and -lrt)..."
+        sed -i 's/-lpthread//g' makefile.machine
+        sed -i 's/-lrt//g' makefile.machine
+        
+        echo "Cross-compiling for Android ARM64..."
+        export TOOLCHAIN=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64
+        export TARGET=aarch64-linux-android26
+        
+        # Override CC and CXX with NDK paths AND inject the C++11 narrowing bypass
+        make 7zr \
+          CC="$TOOLCHAIN/bin/$TARGET-clang" \
+          CXX="$TOOLCHAIN/bin/$TARGET-clang++ -Wno-c++11-narrowing" \
+          STRIP="$TOOLCHAIN/bin/llvm-strip"
+          
+        echo "Injecting native binary into APK..."
+        mkdir -p $GITHUB_WORKSPACE/app/src/main/jniLibs/arm64-v8a
+        cp bin/7zr $GITHUB_WORKSPACE/app/src/main/jniLibs/arm64-v8a/lib7zr.so
+        
+    - name: Grant execute permission for gradlew
+      run: chmod +x gradlew
+
+    - name: Inject google-services.json
+      env:
+        GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+      run: echo "$GOOGLE_SERVICES_JSON" > app/google-services.json
+      
+    - name: Build Debug APK (Kotlin + C++ JNI)
+      run: ./gradlew clean :app:assembleDebug --no-build-cache
+
+    - name: Upload IDE APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: TurnIt-IDE-Debug-Build
+        path: app/build/outputs/apk/debug/app-debug.apk
