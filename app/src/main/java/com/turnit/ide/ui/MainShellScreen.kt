@@ -169,7 +169,7 @@ fun MainShellScreen(
                 consoleLogs.add(output)
             }
             val rootfsPath = File(context.filesDir, "ubuntu-rootfs").absolutePath
-            shellEngine.startProot(rootfsPath, "/bin/sh")
+            shellEngine.startProot(rootfsPath, "/usr/bin/bash")
             activeJob = scope.launch {
                 var sawActiveSession = false
                 var consecutiveInactiveChecks = 0
