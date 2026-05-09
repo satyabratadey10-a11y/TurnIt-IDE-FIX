@@ -58,8 +58,26 @@ jobs:
         GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
       run: echo "$GOOGLE_SERVICES_JSON" > app/google-services.json
       
-    - name: Clean Environment
-      run: rm -rf ~/.gradle/caches/ # Physically nuke the GitHub runner's Gradle cache
+    - name: Hack PRoot Dependencies for Android Linker
+      run: |
+        sudo apt-get update && sudo apt-get install -y patchelf
+        
+        # Navigate to the user's uploaded JNI libs
+        cd app/src/main/jniLibs/arm64-v8a/
+        
+        echo "Fetching latest libtalloc from Termux repositories..."
+        TALLOC_DEB=$(curl -sL https://packages.termux.dev/apt/termux-main/pool/main/t/talloc/ | grep -o 'talloc_[0-9\.\-]*_aarch64.deb' | head -n 1)
+        wget -q "https://packages.termux.dev/apt/termux-main/pool/main/t/talloc/$TALLOC_DEB"
+        
+        echo "Extracting binary..."
+        dpkg-deb -x "$TALLOC_DEB" talloc_out
+        
+        echo "Injecting into TurnIt and renaming for Android packaging..."
+        cp talloc_out/data/data/com.termux/files/usr/lib/libtalloc.so.2 ./libtalloc.so
+        rm -rf "$TALLOC_DEB" talloc_out
+        
+        echo "Binary hacking libproot.so ELF header..."
+        patchelf --replace-needed libtalloc.so.2 libtalloc.so libproot.so
 
     - name: Build Debug APK (Strict Cache Busting)
       # CRITICAL: Added Claude's strict flags to force 100% recompilation of all files
