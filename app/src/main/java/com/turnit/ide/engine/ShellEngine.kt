@@ -82,7 +82,7 @@ class ShellEngine(private val context: Context) {
                     put("HOME", "/root")
                     put("TERM", "xterm-256color")
                     put("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
-                    put("LD_LIBRARY_PATH", "") // Isolates guest OS from Android .so files
+                    put("LD_LIBRARY_PATH", nativeDir) // Isolates guest OS from Android .so files
                 }
             }
 
