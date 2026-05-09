@@ -1,9 +1,9 @@
-name: TurnIt-IDE Native Build (Fix)
+name: TurnIt-IDE Native Build (Cache Buster)
 
 on:
+  workflow_dispatch: 
   push:
     branches: [ "main" ]
-  workflow_dispatch:
 
 jobs:
   build:
@@ -11,15 +11,15 @@ jobs:
     steps:
     - uses: actions/checkout@v4
       with:
-        ref: main
-    
+        ref: main # Force explicit checkout of main branch
+
     - name: Set up JDK 17
       uses: actions/setup-java@v4
       with:
         java-version: '17'
         distribution: 'temurin'
-        cache: gradle
-        
+        # CRITICAL: We REMOVED the 'cache: gradle' line here to prevent loading old state.
+
     - name: Compile lib7zr.so (Android ARM64) via NDK
       run: |
         echo "Downloading p7zip source..."
@@ -33,7 +33,7 @@ jobs:
         # Use the generic CPU makefile
         cp makefile.linux_any_cpu makefile.machine
         
-        echo "Patching Android NDK Linker (Removing -lpthread and -lrt)..."
+        echo "Patching Android NDK Linker..."
         sed -i 's/-lpthread//g' makefile.machine
         sed -i 's/-lrt//g' makefile.machine
         
@@ -41,7 +41,6 @@ jobs:
         export TOOLCHAIN=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64
         export TARGET=aarch64-linux-android26
         
-        # Override CC and CXX with NDK paths AND inject the C++11 narrowing bypass
         make 7zr \
           CC="$TOOLCHAIN/bin/$TARGET-clang" \
           CXX="$TOOLCHAIN/bin/$TARGET-clang++ -Wno-c++11-narrowing" \
@@ -59,11 +58,15 @@ jobs:
         GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
       run: echo "$GOOGLE_SERVICES_JSON" > app/google-services.json
       
-    - name: Build Debug APK (Kotlin + C++ JNI)
-      run: ./gradlew clean :app:assembleDebug --no-build-cache
+    - name: Clean Environment
+      run: rm -rf ~/.gradle/caches/ # Physically nuke the GitHub runner's Gradle cache
+
+    - name: Build Debug APK (Strict Cache Busting)
+      # CRITICAL: Added Claude's strict flags to force 100% recompilation of all files
+      run: ./gradlew clean :app:assembleDebug --no-build-cache --no-configuration-cache --rerun-tasks
 
     - name: Upload IDE APK
       uses: actions/upload-artifact@v4
       with:
-        name: TurnIt-IDE-Ultimate-Fix
+        name: TurnIt-IDE-Ultimate-Clean
         path: app/build/outputs/apk/debug/app-debug.apk
