@@ -65,19 +65,30 @@ jobs:
         # Navigate to the user's uploaded JNI libs
         cd app/src/main/jniLibs/arm64-v8a/
         
-        echo "Fetching latest libtalloc from Termux repositories..."
-        TALLOC_DEB=$(curl -sL https://packages.termux.dev/apt/termux-main/pool/main/t/talloc/ | grep -o 'talloc_[0-9\.\-]*_aarch64.deb' | head -n 1)
-        wget -q "https://packages.termux.dev/apt/termux-main/pool/main/t/talloc/$TALLOC_DEB"
+        echo "Fetching Termux Packages database..."
+        wget -qO Packages.gz "https://packages.termux.dev/apt/termux-main/dists/stable/main/binary-aarch64/Packages.gz"
+        
+        echo "Parsing exact path for libtalloc..."
+        TALLOC_PATH=$(zcat Packages.gz | grep -A 15 "^Package: libtalloc$" | grep "^Filename:" | head -n 1 | awk '{print $2}')
+        
+        if [ -z "$TALLOC_PATH" ]; then
+          echo "FATAL: Could not parse libtalloc path!"
+          exit 1
+        fi
+        
+        echo "Downloading libtalloc from: $TALLOC_PATH"
+        wget -q "https://packages.termux.dev/apt/termux-main/$TALLOC_PATH" -O libtalloc.deb
         
         echo "Extracting binary..."
-        dpkg-deb -x "$TALLOC_DEB" talloc_out
+        dpkg-deb -x libtalloc.deb talloc_out
         
-        echo "Injecting into TurnIt and renaming for Android packaging..."
-        cp talloc_out/data/data/com.termux/files/usr/lib/libtalloc.so.2 ./libtalloc.so
-        rm -rf "$TALLOC_DEB" talloc_out
+        echo "Injecting into TurnIt and resolving symlinks for Android..."
+        cp -L talloc_out/data/data/com.termux/files/usr/lib/libtalloc.so.2 ./libtalloc.so
+        rm -rf libtalloc.deb talloc_out Packages.gz
         
         echo "Binary hacking libproot.so ELF header..."
         patchelf --replace-needed libtalloc.so.2 libtalloc.so libproot.so
+
 
     - name: Build Debug APK (Strict Cache Busting)
       # CRITICAL: Added Claude's strict flags to force 100% recompilation of all files
