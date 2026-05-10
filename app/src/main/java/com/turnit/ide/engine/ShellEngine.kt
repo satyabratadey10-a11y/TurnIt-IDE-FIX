@@ -25,33 +25,47 @@ class ShellEngine(private val context: Context) {
         }
 
         val nativeDir = context.applicationInfo.nativeLibraryDir
-        val proot = File(nativeDir, "libproot.so")
-        val loader64 = File(nativeDir, "libproot_loader64.so")
-        val talloc = File(nativeDir, "libtalloc.so")
+        val prootNative = File(nativeDir, "libproot.so")
+        val loaderNative = File(nativeDir, "libproot_loader64.so")
+        val tallocNative = File(nativeDir, "libtalloc.so")
 
-        if (!proot.exists() || !proot.canExecute()) {
-            appendOutput("[FATAL] libproot.so missing or non-executable in jniLibs/arm64-v8a.")
-            return
-        }
-        if (!loader64.exists() || !loader64.canExecute()) {
-            appendOutput("[FATAL] libproot_loader64.so missing or non-executable.")
+        if (!prootNative.exists() || !loaderNative.exists()) {
+            appendOutput("[FATAL] Required native binaries missing from APK.")
             return
         }
 
-        // CRITICAL FIX: Generate the missing libtalloc.so.2 symlink at runtime
-        val tallocLink = File(context.filesDir, "libtalloc.so.2")
-        if (talloc.exists() && !tallocLink.exists()) {
-            try {
-                Os.symlink(talloc.absolutePath, tallocLink.absolutePath)
-            } catch (e: Exception) {
-                appendOutput("[ShellEngine-V2] Warning: Could not create talloc symlink - ${e.message}")
+        // CRITICAL BYPASS: The Staging Area. 
+        // We copy binaries out of the restricted nativeDir and use Kotlin to force executable permissions.
+        val binDir = File(context.filesDir, "bin").apply { mkdirs() }
+        val proot = File(binDir, "proot")
+        val loader64 = File(binDir, "proot_loader64")
+        val talloc = File(binDir, "libtalloc.so")
+        val tallocLink = File(binDir, "libtalloc.so.2")
+
+        try {
+            if (!proot.exists() || proot.length() != prootNative.length()) {
+                prootNative.copyTo(proot, overwrite = true)
+                proot.setExecutable(true) // Uses modern, kernel-approved syscalls
             }
+            if (!loader64.exists() || loader64.length() != loaderNative.length()) {
+                loaderNative.copyTo(loader64, overwrite = true)
+                loader64.setExecutable(true)
+            }
+            if (tallocNative.exists() && (!talloc.exists() || talloc.length() != tallocNative.length())) {
+                tallocNative.copyTo(talloc, overwrite = true)
+            }
+            if (talloc.exists() && !tallocLink.exists()) {
+                Os.symlink(talloc.absolutePath, tallocLink.absolutePath)
+            }
+        } catch (e: Exception) {
+            appendOutput("[FATAL] Staging failed: ${e.message}")
+            return
         }
 
         val safeCommand = if (command == "/bin/sh") "/usr/bin/bash" else command
 
         val prootArgs = buildList {
-            add(proot.absolutePath)
+            add(proot.absolutePath) // Execute the staged binary, not the native one
             add("--kill-on-exit")
             add("--link2symlink")
             add("--sysvipc")
@@ -73,7 +87,6 @@ class ShellEngine(private val context: Context) {
         appendOutput("[ShellEngine-V2] ─────────────────────────────────────")
         appendOutput("[ShellEngine-V2] Launching Ultimate PRoot Architecture...")
         appendOutput("[ShellEngine-V2] Loader path : ${loader64.absolutePath}")
-        appendOutput("[ShellEngine-V2] Full command: ${prootArgs.joinToString(" ")}")
         appendOutput("[ShellEngine-V2] ─────────────────────────────────────")
 
         try {
@@ -82,19 +95,16 @@ class ShellEngine(private val context: Context) {
                 redirectErrorStream(false)
                 
                 environment().apply {
+                    // PRoot will now see the X_OK execute bit is true, and skip the cache fallback!
                     put("PROOT_LOADER", loader64.absolutePath)
-                    
-                    val loader32 = File(nativeDir, "libproot_loader.so")
-                    if (loader32.exists()) put("PROOT_LOADER_32", loader32.absolutePath)
-                    
                     put("PROOT_NO_SECCOMP", "1")
                     put("PROOT_TMP_DIR", context.cacheDir.absolutePath)
                     put("HOME", "/root")
                     put("TERM", "xterm-256color")
                     put("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
                     
-                    // We feed both the native library dir AND our symlink dir to the dynamic linker
-                    put("LD_LIBRARY_PATH", "${nativeDir}:${context.filesDir.absolutePath}") 
+                    // Point dynamic linker to our staged directory
+                    put("LD_LIBRARY_PATH", binDir.absolutePath) 
                 }
             }
 
