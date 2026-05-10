@@ -2,6 +2,7 @@ package com.turnit.ide.engine
 
 import android.content.Context
 import android.util.Log
+import android.system.Os
 import java.io.File
 import java.io.InputStream
 
@@ -26,6 +27,7 @@ class ShellEngine(private val context: Context) {
         val nativeDir = context.applicationInfo.nativeLibraryDir
         val proot = File(nativeDir, "libproot.so")
         val loader64 = File(nativeDir, "libproot_loader64.so")
+        val talloc = File(nativeDir, "libtalloc.so")
 
         if (!proot.exists() || !proot.canExecute()) {
             appendOutput("[FATAL] libproot.so missing or non-executable in jniLibs/arm64-v8a.")
@@ -33,8 +35,17 @@ class ShellEngine(private val context: Context) {
         }
         if (!loader64.exists() || !loader64.canExecute()) {
             appendOutput("[FATAL] libproot_loader64.so missing or non-executable.")
-            appendOutput("-> You MUST extract it from Termux and place it in jniLibs/arm64-v8a/")
             return
+        }
+
+        // CRITICAL FIX: Generate the missing libtalloc.so.2 symlink at runtime
+        val tallocLink = File(context.filesDir, "libtalloc.so.2")
+        if (talloc.exists() && !tallocLink.exists()) {
+            try {
+                Os.symlink(talloc.absolutePath, tallocLink.absolutePath)
+            } catch (e: Exception) {
+                appendOutput("[ShellEngine-V2] Warning: Could not create talloc symlink - ${e.message}")
+            }
         }
 
         val safeCommand = if (command == "/bin/sh") "/usr/bin/bash" else command
@@ -53,7 +64,7 @@ class ShellEngine(private val context: Context) {
                 add("-b"); add(it)
             }
             
-            // Host data bridge - allows Ubuntu to read/write Android files
+            // Host data bridge
             add("-b"); add("${context.filesDir.absolutePath}:/android/data")
             
             addAll(safeCommand.split(" "))
@@ -71,7 +82,6 @@ class ShellEngine(private val context: Context) {
                 redirectErrorStream(false)
                 
                 environment().apply {
-                    // CRITICAL W^X BYPASS: Point PRoot to the executable native library
                     put("PROOT_LOADER", loader64.absolutePath)
                     
                     val loader32 = File(nativeDir, "libproot_loader.so")
@@ -82,7 +92,9 @@ class ShellEngine(private val context: Context) {
                     put("HOME", "/root")
                     put("TERM", "xterm-256color")
                     put("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
-                    put("LD_LIBRARY_PATH", nativeDir) // Isolates guest OS from Android .so files
+                    
+                    // We feed both the native library dir AND our symlink dir to the dynamic linker
+                    put("LD_LIBRARY_PATH", "${nativeDir}:${context.filesDir.absolutePath}") 
                 }
             }
 
