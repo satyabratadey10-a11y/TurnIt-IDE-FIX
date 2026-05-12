@@ -2,8 +2,6 @@ package com.turnit.ide.engine
 
 import android.content.Context
 import android.util.Log
-import java.io.File
-import java.io.InputStream
 
 private const val TAG = "ShellEngine"
 
@@ -19,103 +17,16 @@ class ShellEngine(private val context: Context) {
 
     val isSessionActive: Boolean get() = isRunning
 
-    data class BinarySet(
-        val proot: File,
-        val loader64: File,
-        val loader32: File
-    )
-
-    private fun validateBinaries(): BinarySet? {
-        val dir = context.applicationInfo.nativeLibraryDir
-
-        appendOutput("[ShellEngine] ── Pre-flight binary validation ──────────────────")
-        appendOutput("[ShellEngine] nativeLibraryDir = $dir")
-
-        val installed = File(dir).listFiles()
-        if (installed == null) {
-            appendOutput("[ShellEngine] FATAL: nativeLibraryDir is null or unreadable")
-            return null
-        }
-        appendOutput("[ShellEngine] Installed native files:")
-        installed.forEach { f ->
-            appendOutput("[ShellEngine]   ${f.name}  exists=${f.exists()}  canExec=${f.canExecute()}  size=${f.length()}")
-        }
-
-        val proot = File(dir, "libproot.so")
-        val loader64 = File(dir, "libproot_loader64.so")
-        val loader32 = File(dir, "libproot_loader32.so")
-
-        var ok = true
-        listOf(
-            "libproot.so" to proot,
-            "libproot_loader64.so" to loader64
-        ).forEach { (name, file) ->
-            val verdict = when {
-                !file.exists() -> "MISSING — check Gradle packaging config"
-                !file.canExecute() -> "EXISTS BUT NOT EXECUTABLE — SELinux blocked exec"
-                file.length() == 0L -> "ZERO BYTES — packaging corruption"
-                else -> "OK (${file.length()} bytes)"
-            }
-            appendOutput("[ShellEngine] $name: $verdict")
-            if (verdict != "OK (${file.length()} bytes)") ok = false
-        }
-
-        if (loader32.exists()) {
-            appendOutput("[ShellEngine] libproot_loader32.so: OK (${loader32.length()} bytes)")
-        } else {
-            appendOutput("[ShellEngine] libproot_loader32.so: OPTIONAL/MISSING")
-        }
-
-        if (!ok) {
-            appendOutput("[ShellEngine] ── Pre-flight FAILED — aborting launch ───────")
-            appendOutput("[ShellEngine] If binaries are MISSING: extractNativeLibs=true and useLegacyPackaging=true must be set")
-            return null
-        }
-
-        appendOutput("[ShellEngine] ── Pre-flight PASSED ─────────────────────────────")
-        return BinarySet(proot, loader64, loader32)
-    }
-
-    private fun setupTallocSymlink(): String {
-        val nativeDir = context.applicationInfo.nativeLibraryDir
-        val tallocSo = File(nativeDir, "libtalloc.so")
-
-        if (!tallocSo.exists()) {
-            appendOutput("[ShellEngine] libtalloc.so not found — assuming static linkage, skipping symlink")
-            return nativeDir
-        }
-
-        val libLinkDir = File(context.filesDir, "lib_links").also { it.mkdirs() }
-        val tallocLink = File(libLinkDir, "libtalloc.so.2")
-
-        if (!tallocLink.exists()) {
-            try {
-                java.nio.file.Files.createSymbolicLink(tallocLink.toPath(), tallocSo.toPath())
-                appendOutput("[ShellEngine] Created talloc symlink: ${tallocLink.absolutePath} → ${tallocSo.absolutePath}")
-            } catch (e: Exception) {
-                appendOutput("[ShellEngine] Symlink creation failed: ${e.message} — falling back to nativeDir only")
-                return nativeDir
-            }
-        }
-        return "${libLinkDir.absolutePath}:$nativeDir"
-    }
-
-    fun startProot(rootfsPath: String, command: String = "/usr/bin/bash") {
+    fun startShell() {
         if (isRunning) {
             appendOutput("[ShellEngine] Session already active.")
             return
         }
 
-        val binaries = validateBinaries() ?: return
-        val ldPath = setupTallocSymlink()
-        val safeCommand = if (command == "/bin/sh") "/usr/bin/bash" else command
-        val args = buildProotArgs(binaries, rootfsPath, safeCommand)
+        val shellPath = "/system/bin/sh"
+        val args = listOf(shellPath)
 
-        appendOutput("[ShellEngine] ── Environment ──────────────────────────────────")
-        appendOutput("[ShellEngine] PROOT_LOADER    = ${binaries.loader64.absolutePath}")
-        appendOutput("[ShellEngine] LD_LIBRARY_PATH = $ldPath")
-        appendOutput("[ShellEngine] PROOT_NO_SECCOMP = 1 (pure ptrace mode — correct)")
-        appendOutput("[ShellEngine] ── Command ─────────────────────────────────────")
+        appendOutput("[ShellEngine] ── Native Shell ──────────────────────────────────")
         appendOutput("[ShellEngine] ${args.joinToString(" ")}")
         appendOutput("[ShellEngine] ────────────────────────────────────────────────")
 
@@ -125,19 +36,11 @@ class ShellEngine(private val context: Context) {
                 redirectErrorStream(false)
 
                 environment().apply {
-                    put("PROOT_LOADER", binaries.loader64.absolutePath)
-                    if (binaries.loader32.exists()) put("PROOT_LOADER_32", binaries.loader32.absolutePath)
-                    put("PROOT_NO_SECCOMP", "1")
-                    put("LD_LIBRARY_PATH", ldPath)
-                    put("PROOT_TMP_DIR", context.cacheDir.absolutePath)
-                    put("HOME", "/root")
+                    put("HOME", context.filesDir.absolutePath)
+                    put("TMPDIR", context.cacheDir.absolutePath)
                     put("TERM", "xterm-256color")
-                    put("LANG", "en_US.UTF-8")
-                    put("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
-                    put("SHELL", "/bin/bash")
-                    put("USER", "root")
-                    put("LOGNAME", "root")
-                    put("LD_PRELOAD", "")
+                    put("LD_LIBRARY_PATH", context.applicationInfo.nativeLibraryDir)
+                    put("PATH", "/system/bin:/system/xbin:${context.applicationInfo.nativeLibraryDir}")
                 }
             }.start().also { proc ->
                 isRunning = true
@@ -151,26 +54,6 @@ class ShellEngine(private val context: Context) {
             Log.e(TAG, "ProcessBuilder failure", e)
             isRunning = false
         }
-    }
-
-    private fun buildProotArgs(bins: BinarySet, rootfsPath: String, command: String): List<String> = buildList {
-        add(bins.proot.absolutePath)
-        add("--kill-on-exit")
-        add("--link2symlink")
-        add("--sysvipc")
-        add("--cwd=/root")
-        add("-r"); add(rootfsPath)
-
-        listOf("/proc", "/sys", "/dev", "/dev/pts").forEach { path ->
-            add("-b"); add("$path:$path")
-        }
-
-        val devShm = File("/dev/shm")
-        if (!devShm.exists()) devShm.mkdirs()
-        add("-b"); add("/dev/shm:/dev/shm")
-
-        add("-b"); add("${context.filesDir.absolutePath}:/android/data")
-        addAll(command.split(" "))
     }
 
     fun sendInput(text: String) {

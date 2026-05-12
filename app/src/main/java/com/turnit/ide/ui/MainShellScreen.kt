@@ -168,8 +168,7 @@ fun MainShellScreen(
             shellEngine.setOutputCallback { output ->
                 consoleLogs.add(output)
             }
-            val rootfsPath = File(context.filesDir, "ubuntu-rootfs").absolutePath
-            shellEngine.startProot(rootfsPath, "/usr/bin/bash")
+            shellEngine.startShell()
             activeJob = scope.launch {
                 var sawActiveSession = false
                 var consecutiveInactiveChecks = 0
@@ -217,7 +216,7 @@ fun MainShellScreen(
             shellEngine.setOutputCallback { output -> 
                 consoleLogs.add(output + "\n") 
             }
-            shellEngine.startProot(rootfsDir.absolutePath, "/usr/bin/bash")
+            shellEngine.startShell()
 
         } else {
             isShellReady = true
@@ -226,7 +225,7 @@ fun MainShellScreen(
             shellEngine.setOutputCallback { output -> 
                 consoleLogs.add(output + "\n") 
             }
-            shellEngine.startProot(rootfsDir.absolutePath, "/usr/bin/bash")
+            shellEngine.startShell()
 
         }
     }
@@ -245,12 +244,12 @@ fun MainShellScreen(
         }
         if (!isRunning) {
             startShellSession()
-            consoleLogs.add("[PRoot shell is starting, please retry command]\n")
+            consoleLogs.add("[Native shell is starting, please retry command]\n")
             return@run false
         }
         consoleLogs.add("\n$ $trimmed\n")
         if (shellEngine.isSessionActive != true) {
-            consoleLogs.add("[Failed to send input to PRoot shell]\n")
+            consoleLogs.add("[Failed to send input to native shell]\n")
             return@run false
         }
         shellEngine.sendInput(trimmed)

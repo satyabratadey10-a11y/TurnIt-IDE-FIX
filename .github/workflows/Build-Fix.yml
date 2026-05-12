@@ -58,34 +58,6 @@ jobs:
         GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
       run: echo "$GOOGLE_SERVICES_JSON" > app/google-services.json
       
-    - name: Hack PRoot Dependencies for Android Linker
-      run: |
-        # Navigate to the user's uploaded JNI libs
-        cd app/src/main/jniLibs/arm64-v8a/
-        
-        echo "Fetching Termux Packages database..."
-        wget -qO Packages.gz "https://packages.termux.dev/apt/termux-main/dists/stable/main/binary-aarch64/Packages.gz"
-        
-        echo "Parsing exact path for libtalloc..."
-        TALLOC_PATH=$(zcat Packages.gz | grep -A 15 "^Package: libtalloc$" | grep "^Filename:" | head -n 1 | awk '{print $2}')
-        
-        if [ -z "$TALLOC_PATH" ]; then
-          echo "FATAL: Could not parse libtalloc path!"
-          exit 1
-        fi
-        
-        echo "Downloading libtalloc from: $TALLOC_PATH"
-        wget -q "https://packages.termux.dev/apt/termux-main/$TALLOC_PATH" -O libtalloc.deb
-        
-        echo "Extracting binary..."
-        dpkg-deb -x libtalloc.deb talloc_out
-        
-        echo "Injecting into TurnIt (Without Corrupting ELF Headers)..."
-        cp -L talloc_out/data/data/com.termux/files/usr/lib/libtalloc.so.2 ./libtalloc.so
-        rm -rf libtalloc.deb talloc_out Packages.gz
-
-
-
     - name: Build Debug APK (Strict Cache Busting)
       # CRITICAL: Added Claude's strict flags to force 100% recompilation of all files
       run: ./gradlew clean :app:assembleDebug --no-build-cache --no-configuration-cache --rerun-tasks
