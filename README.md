@@ -8,7 +8,7 @@ This repository contains the full Android application for TurnIt IDE. It is buil
 
 ## Core features
 
-- **AI assistant** with OpenAI-compatible chat endpoints and model selection.
+- **AI assistant** with OpenAI compatible chat endpoints and model selection.
 - **Terminal console** backed by a native `/system/bin/sh` session with streamed output.
 - **Root filesystem bootstrap** that extracts an Ubuntu tarball on first run.
 - **Basic code editor** with line numbers and monospaced styling.
@@ -48,7 +48,7 @@ On first launch, the app checks for an extracted root filesystem under the app�
 
 ## AI configuration
 
-The chat pane supports OpenAI-compatible APIs. Default model entries are pre-filled with common endpoints, but you must supply your own API key. Use the “Add Custom Model” dialog in the UI to point to other providers.
+The chat pane supports OpenAI compatible APIs. Default model entries are pre-filled with common endpoints, but you must supply your own API key. Use the “Add Custom Model” dialog in the UI to point to other providers.
 
 ## Roadmap notes
 
