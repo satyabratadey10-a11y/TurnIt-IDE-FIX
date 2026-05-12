@@ -170,7 +170,6 @@ class ShellEngine(private val context: Context) {
         add("-b"); add("/dev/shm:/dev/shm")
 
         add("-b"); add("${context.filesDir.absolutePath}:/android/data")
-        add("--")
         addAll(command.split(" "))
     }
 
