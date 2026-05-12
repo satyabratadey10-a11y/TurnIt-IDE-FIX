@@ -26,7 +26,7 @@ Transition the project to a fully native Android C toolchain by producing aarch6
   - Place in `app/src/main/jniLibs/arm64-v8a/` as `libtoybox.so` (if shared) or in `app/src/main/assets/toolchain/` (if static binary).
 
 ### 3) Compile GNU make
-- Source: `https://ftp.gnu.org/gnu/make/`.
+- Source: `https://ftp.gnu.org/gnu/make/make-4.4.1.tar.gz`.
 - Configure for Android:
   - `./configure --host=aarch64-linux-android --disable-nls --prefix=/data/data/com.turnit.ide/files/toolchain`.
   - Provide `CC`, `CFLAGS=--sysroot=$SYSROOT`, and `LDFLAGS=--sysroot=$SYSROOT`.
@@ -37,14 +37,16 @@ Transition the project to a fully native Android C toolchain by producing aarch6
 ### 4) Compile clang (LLVM)
 - Source: `https://github.com/llvm/llvm-project`.
 - Build with CMake using the NDK toolchain file:
-  - `cmake -G Ninja -S llvm -B build \
+  - ```
+    cmake -G Ninja -S llvm -B build \
       -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
       -DANDROID_ABI=arm64-v8a \
       -DANDROID_PLATFORM=26 \
       -DLLVM_ENABLE_PROJECTS=clang \
       -DLLVM_TARGETS_TO_BUILD=AArch64 \
       -DLLVM_ENABLE_TERMINFO=OFF \
-      -DLLVM_ENABLE_LIBEDIT=OFF`.
+      -DLLVM_ENABLE_LIBEDIT=OFF
+    ```
 - Produce `clang` and `clang++` binaries.
 - Packaging:
   - Copy `bin/clang`, `bin/clang++`, and required runtime libs into `app/src/main/assets/toolchain/`.

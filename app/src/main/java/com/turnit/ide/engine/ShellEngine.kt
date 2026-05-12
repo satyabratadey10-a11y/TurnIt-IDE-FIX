@@ -17,8 +17,7 @@ class ShellEngine(private val context: Context) {
 
     val isSessionActive: Boolean get() = isRunning
 
-    @Suppress("UNUSED_PARAMETER")
-    fun startProot(rootfsPath: String, command: String = "/system/bin/sh") {
+    fun startShell() {
         if (isRunning) {
             appendOutput("[ShellEngine] Session already active.")
             return
