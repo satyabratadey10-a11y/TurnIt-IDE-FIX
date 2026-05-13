@@ -107,6 +107,14 @@ import java.io.File
 enum class IdePane { TERMINAL, EDITOR, FILE_TREE }
 
 private const val CHAT_PLACEHOLDER_TEXT = "Type your message..."
+private val CHAT_PANEL_BREAKPOINT = 600.dp
+private const val CHAT_PANEL_WIDTH_RATIO = 0.92f
+private val CHAT_PANEL_DEFAULT_WIDTH = 360.dp
+private val CHAT_SCRIM_COLOR = Color(0x99000000)
+private val CHAT_BUBBLE_MAX_WIDTH = 280.dp
+private val CHAT_USER_BUBBLE_COLOR = Color(0xFF1F2937)
+private val CHAT_ASSISTANT_BUBBLE_COLOR = Color(0xFF2563EB)
+private val CHAT_USER_TEXT_COLOR = Color(0xFFE5E7EB)
 private const val FILE_TREE_INDENT = "  "
 private const val FILE_TREE_DIR_ICON = "📁"
 private const val FILE_TREE_FILE_ICON = "📄"
@@ -461,7 +469,8 @@ fun MainShellScreen(
                     .fillMaxSize()
                     .padding(pad)
             ) {
-                val chatPanelWidth = if (maxWidth < 600.dp) maxWidth * 0.92f else 360.dp
+                val chatPanelWidth =
+                    if (maxWidth < CHAT_PANEL_BREAKPOINT) maxWidth * CHAT_PANEL_WIDTH_RATIO else CHAT_PANEL_DEFAULT_WIDTH
 
                 Box(modifier = Modifier.fillMaxSize()) {
                     Column(
@@ -494,7 +503,7 @@ fun MainShellScreen(
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .background(Color(0x99000000))
+                                .background(CHAT_SCRIM_COLOR)
                                 .clickable { isChatOpen = false }
                         )
                     }
@@ -696,20 +705,20 @@ private fun ChatPane(
         ) {
             items(messages) { message ->
                 val isUser = message.role == "user"
-                val bubbleColor = if (isUser) Color(0xFF1F2937) else Color(0xFF2563EB)
+                val bubbleColor = if (isUser) CHAT_USER_BUBBLE_COLOR else CHAT_ASSISTANT_BUBBLE_COLOR
                 val bubbleShape = if (isUser) {
                     RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomEnd = 16.dp, bottomStart = 4.dp)
                 } else {
                     RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomEnd = 4.dp, bottomStart = 16.dp)
                 }
-                val textColor = if (isUser) Color(0xFFE5E7EB) else Color.White
+                val textColor = if (isUser) CHAT_USER_TEXT_COLOR else Color.White
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = if (isUser) Arrangement.Start else Arrangement.End
                 ) {
                     Box(
                         modifier = Modifier
-                            .widthIn(max = 280.dp)
+                            .widthIn(max = CHAT_BUBBLE_MAX_WIDTH)
                             .clip(bubbleShape)
                             .background(bubbleColor)
                             .padding(horizontal = 14.dp, vertical = 10.dp)
