@@ -1,16 +1,6 @@
 package com.turnit.ide.ui
 
-import android.animation.ValueAnimator
 import android.net.Uri
-import android.text.Editable
-import android.text.TextWatcher
-import android.view.KeyEvent
-import android.view.ViewGroup
-import android.view.animation.LinearInterpolator
-import android.view.inputmethod.EditorInfo
-import android.widget.EditText
-import android.widget.FrameLayout
-import androidx.appcompat.content.res.AppCompatResources
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -19,7 +9,6 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -31,10 +20,9 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -49,10 +37,10 @@ import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PostAdd
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.BottomSheetScaffold
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -63,15 +51,15 @@ import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.NavigationDrawerItemDefaults
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberBottomSheetScaffoldState
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -87,7 +75,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
@@ -100,12 +87,9 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
-import com.turnit.ide.R
 import com.turnit.ide.ai.AiModel
 import com.turnit.ide.ai.AiChatClient
 import com.turnit.ide.ai.ChatMessage
-import com.turnit.ide.engine.ExtractionEngine
 import com.turnit.ide.engine.ShellEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -117,7 +101,15 @@ import java.io.File
 enum class IdePane { TERMINAL, EDITOR, FILE_TREE }
 
 private const val CHAT_PLACEHOLDER_TEXT = "Type your message..."
-private val SPLITTER_HANDLE_COLOR = Color(0x88999999)
+private const val CHAT_SPLIT_DEFAULT_WEIGHT = 0.6f
+private const val CHAT_SPLIT_MIN_WEIGHT = 0.2f
+private const val CHAT_SPLIT_MAX_WEIGHT = 0.8f
+private val CHAT_SPLITTER_WIDTH = 8.dp
+private val CHAT_SPLITTER_COLOR = IdeColors.Border
+private val CHAT_BUBBLE_MAX_WIDTH = 280.dp
+private val CHAT_USER_BUBBLE_COLOR = Color(0xFF1F2937)
+private val CHAT_ASSISTANT_BUBBLE_COLOR = Color(0xFF2563EB)
+private val CHAT_USER_TEXT_COLOR = Color(0xFFE5E7EB)
 private const val FILE_TREE_INDENT = "  "
 private const val FILE_TREE_DIR_ICON = "📁"
 private const val FILE_TREE_FILE_ICON = "📄"
@@ -136,10 +128,9 @@ fun MainShellScreen(
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    val scaffoldState = rememberBottomSheetScaffoldState()
 
     var activePane by remember { mutableStateOf(IdePane.TERMINAL) }
-    var leftPaneWeight by remember { mutableFloatStateOf(0.5f) }
+    var leftPaneWeight by remember { mutableFloatStateOf(CHAT_SPLIT_DEFAULT_WEIGHT) }
 
     val shellEngine = remember { ShellEngine(context) }
     val consoleLogs = remember {
@@ -156,18 +147,13 @@ fun MainShellScreen(
     var activeJob by remember { mutableStateOf<Job?>(null) }
     var isRunning by remember { mutableStateOf(false) }
     var hasShellStarted by remember { mutableStateOf(false) }
-    var isShellReady by remember { mutableStateOf(false) }
-    var isExtractingRootfs by remember { mutableStateOf(false) }
 
     val testCompileCommand = "echo 'Testing Compilers...'; gcc --version; javac -version; pwd; ls -la"
     val startShellSession = {
-        if (isShellReady && !isRunning && !hasShellStarted) {
+        if (!isRunning && !hasShellStarted) {
             hasShellStarted = true
             isRunning = true
             onRunBuild()
-            shellEngine.setOutputCallback { output ->
-                consoleLogs.add(output)
-            }
             shellEngine.startShell()
             activeJob = scope.launch {
                 var sawActiveSession = false
@@ -196,41 +182,9 @@ fun MainShellScreen(
 
 
     LaunchedEffect(Unit) {
-        val rootfsDir = File(context.filesDir, "ubuntu-rootfs")
-        val shouldExtract = !rootfsDir.exists() || rootfsDir.listFiles()?.isEmpty() == true
-
-        if (shouldExtract) {
-            activePane = IdePane.TERMINAL
-            isExtractingRootfs = true
-            consoleLogs.add("Extracting Ubuntu RootFS... Please wait.\n")
-            val extracted = withContext(Dispatchers.IO) {
-                ExtractionEngine(context).bootstrapEnvironment(context) { output ->
-                    consoleLogs.add(output)
-                }
-            }
-            isExtractingRootfs = false
-            consoleLogs.add("[Ubuntu RootFS extraction complete]\n")
-            isShellReady = true
-            
-            // Wire the callback and force the V2 engine to boot the minimal shell
-            shellEngine.setOutputCallback { output -> 
-                consoleLogs.add(output + "\n") 
-            }
-            shellEngine.startShell()
-
-        } else {
-            isShellReady = true
-            
-            // If already extracted, wire the callback and boot immediately
-            shellEngine.setOutputCallback { output -> 
-                consoleLogs.add(output + "\n") 
-            }
-            shellEngine.startShell()
-
+        shellEngine.setOutputCallback { output ->
+            consoleLogs.add(output)
         }
-    }
-
-    LaunchedEffect(isShellReady) {
         startShellSession()
     }
     
@@ -238,10 +192,6 @@ fun MainShellScreen(
         val trimmed = command.trim()
         if (trimmed.isBlank()) return@run false
         activePane = IdePane.TERMINAL
-        if (!isShellReady || isExtractingRootfs) {
-            consoleLogs.add("[Shell unavailable while RootFS is preparing]\n")
-            return@run false
-        }
         if (!isRunning) {
             startShellSession()
             consoleLogs.add("[Native shell is starting, please retry command]\n")
@@ -442,11 +392,8 @@ fun MainShellScreen(
             }
         }
     ) {
-        BottomSheetScaffold(
-            scaffoldState = scaffoldState,
+        Scaffold(
             containerColor = IdeColors.Bg,
-            sheetContainerColor = IdeColors.BgSurface,
-            sheetPeekHeight = 56.dp,
             topBar = {
                 val rainbowShift = rememberInfiniteTransition(label = "brand_shift")
                 val shift by rainbowShift.animateFloat(
@@ -503,16 +450,66 @@ fun MainShellScreen(
                         containerColor = IdeColors.BgSurface
                     )
                 )
-            },
-            sheetContent = {
-                BoxWithConstraints(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(360.dp)
-                        .background(IdeColors.BgSurface)
-                ) {
-                    if (maxWidth < 900.dp) {
+            }
+        ) { pad ->
+            BoxWithConstraints(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(pad)
+            ) {
+                val totalWidthPx = constraints.maxWidth.toFloat().coerceAtLeast(1f)
+                val rightPaneWeight = 1f - leftPaneWeight
+
+                Row(modifier = Modifier.fillMaxSize()) {
+                    Column(
+                        modifier = Modifier
+                            .weight(leftPaneWeight)
+                            .fillMaxHeight()
+                            .background(IdeColors.Bg)
+                    ) {
+                        PaneTabStrip(
+                            activePane = activePane,
+                            onSelect = { activePane = it }
+                        )
+                        HorizontalDivider(color = IdeColors.Border, thickness = 1.dp)
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            when (activePane) {
+                                IdePane.TERMINAL -> TerminalConsoleView(
+                                    logs = consoleLogs,
+                                    input = terminalInput,
+                                    isExecuting = isExecuting,
+                                    currentDir = currentDir,
+                                    onInputChange = { terminalInput = it },
+                                    onSubmit = handleTerminalSubmit
+                                )
+                                IdePane.EDITOR -> CodeEditorView()
+                                IdePane.FILE_TREE -> FileTreePane(filesDir = context.filesDir)
+                            }
+                        }
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .width(CHAT_SPLITTER_WIDTH)
+                            .background(CHAT_SPLITTER_COLOR)
+                            .pointerInput(totalWidthPx) {
+                                detectHorizontalDragGestures { _, dragAmount ->
+                                    val delta = dragAmount / totalWidthPx
+                                    leftPaneWeight =
+                                        (leftPaneWeight + delta).coerceIn(CHAT_SPLIT_MIN_WEIGHT, CHAT_SPLIT_MAX_WEIGHT)
+                                }
+                            }
+                    )
+
+                    Box(
+                        modifier = Modifier
+                            .weight(rightPaneWeight)
+                            .fillMaxHeight()
+                            .background(IdeColors.BgSurface)
+                    ) {
                         ChatPane(
+                            modifier = Modifier.fillMaxSize(),
                             selectedModel = selectedModel,
                             modelOptions = modelOptions,
                             onModelSelected = { model ->
@@ -528,111 +525,7 @@ fun MainShellScreen(
                             onInputChange = { chatInput = it },
                             onSend = sendChatPrompt
                         )
-                    } else {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(IdeColors.BgSurface)
-                        )
                     }
-                }
-            }
-        ) { pad ->
-            BoxWithConstraints(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(pad)
-            ) {
-                val totalWidthInPx = constraints.maxWidth.toFloat().coerceAtLeast(1f)
-                val useBottomSheetForChat = maxWidth < 900.dp
-                val dividerX = maxWidth * leftPaneWeight
-                val handleOffsetX = dividerX - 12.dp
-
-                Box(modifier = Modifier.fillMaxSize()) {
-                    Row(modifier = Modifier.fillMaxSize()) {
-                        Box(
-                            modifier = Modifier
-                                .weight(leftPaneWeight)
-                                .fillMaxHeight()
-                                .background(IdeColors.Bg)
-                        ) {
-                            Column(modifier = Modifier.fillMaxSize()) {
-                                PaneTabStrip(
-                                    activePane = activePane,
-                                    onSelect = { activePane = it }
-                                )
-                                HorizontalDivider(color = IdeColors.Border, thickness = 1.dp)
-                                Box(modifier = Modifier.fillMaxSize()) {
-                                    when (activePane) {
-                                        IdePane.TERMINAL -> TerminalConsoleView(
-                                            logs = consoleLogs,
-                                            input = terminalInput,
-                                            isExecuting = isExecuting,
-                                            currentDir = currentDir,
-                                            onInputChange = { terminalInput = it },
-                                            onSubmit = handleTerminalSubmit
-                                        )
-                                        IdePane.EDITOR -> CodeEditorView()
-                                        IdePane.FILE_TREE -> FileTreePane(filesDir = context.filesDir)
-                                    }
-                                }
-                            }
-                        }
-
-                        Box(
-                            modifier = Modifier
-                                .weight(1f - leftPaneWeight)
-                                .fillMaxHeight()
-                                .background(IdeColors.BgSurface)
-                        ) {
-                            if (useBottomSheetForChat) {
-                                Box(
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = "AI Chat is in bottom sheet",
-                                        color = IdeColors.TextMuted,
-                                        fontFamily = FontFamily.Monospace,
-                                        fontSize = 12.sp
-                                    )
-                                }
-                            } else {
-                                ChatPane(
-                                    selectedModel = selectedModel,
-                                    modelOptions = modelOptions,
-                                    onModelSelected = { model ->
-                                        if (model == addCustomModelOption) {
-                                            clearCustomModelInputs()
-                                            showCustomModelDialog = true
-                                        } else {
-                                            selectedModel = model
-                                        }
-                                    },
-                                    messages = chatMessages,
-                                    input = chatInput,
-                                    onInputChange = { chatInput = it },
-                                    onSend = sendChatPrompt
-                                )
-                            }
-                        }
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.CenterStart)
-                            .offset(x = handleOffsetX)
-                            .size(width = 24.dp, height = 72.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(SPLITTER_HANDLE_COLOR)
-                            .pointerInput(Unit) {
-                                detectHorizontalDragGestures { _, dragAmount ->
-                                    val deltaWeight = dragAmount / totalWidthInPx
-                                    leftPaneWeight =
-                                        (leftPaneWeight + deltaWeight).coerceIn(0.2f, 0.8f)
-                                }
-                            }
-                    )
                 }
             }
         }
@@ -710,6 +603,7 @@ fun MainShellScreen(
 
 @Composable
 private fun ChatPane(
+    modifier: Modifier = Modifier,
     selectedModel: AiModel,
     modelOptions: List<AiModel>,
     onModelSelected: (AiModel) -> Unit,
@@ -726,10 +620,10 @@ private fun ChatPane(
     }
 
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxSize()
             .background(IdeColors.BgSurface)
-            .padding(10.dp)
+            .padding(12.dp)
     ) {
         Box(
             modifier = Modifier
@@ -772,24 +666,28 @@ private fun ChatPane(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             items(messages) { message ->
+                val isUser = message.role == "user"
+                val bubbleColor = if (isUser) CHAT_USER_BUBBLE_COLOR else CHAT_ASSISTANT_BUBBLE_COLOR
+                val bubbleShape = if (isUser) {
+                    RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomEnd = 16.dp, bottomStart = 4.dp)
+                } else {
+                    RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomEnd = 4.dp, bottomStart = 16.dp)
+                }
+                val textColor = if (isUser) CHAT_USER_TEXT_COLOR else Color.White
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = if (message.role == "user") Arrangement.End else Arrangement.Start
+                    horizontalArrangement = if (isUser) Arrangement.Start else Arrangement.End
                 ) {
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(Color.White.copy(alpha = 0.1f))
-                            .border(
-                                1.dp,
-                                Color.White.copy(alpha = 0.18f),
-                                RoundedCornerShape(14.dp)
-                            )
-                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                            .widthIn(max = CHAT_BUBBLE_MAX_WIDTH)
+                            .clip(bubbleShape)
+                            .background(bubbleColor)
+                            .padding(horizontal = 14.dp, vertical = 10.dp)
                     ) {
                         Text(
                             text = message.content,
-                            color = IdeColors.TextPrimary,
+                            color = textColor,
                             fontSize = 12.sp
                         )
                     }
@@ -802,27 +700,45 @@ private fun ChatPane(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .background(IdeColors.Bg)
+                .navigationBarsPadding()
         ) {
             Row(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 2.dp, vertical = 2.dp),
+                    .fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                NeonChatInputEditText(
+                TextField(
                     value = input,
                     onValueChange = onInputChange,
+                    placeholder = { Text(CHAT_PLACEHOLDER_TEXT) },
                     modifier = Modifier.weight(1f),
-                    onSend = onSend
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.None,
+                        autoCorrect = true,
+                        keyboardType = KeyboardType.Text,
+                        imeAction = ImeAction.Send
+                    ),
+                    keyboardActions = KeyboardActions(onSend = { onSend() }),
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = IdeColors.Bg,
+                        unfocusedContainerColor = IdeColors.Bg,
+                        disabledContainerColor = IdeColors.Bg,
+                        focusedTextColor = IdeColors.TextPrimary,
+                        unfocusedTextColor = IdeColors.TextPrimary,
+                        disabledTextColor = IdeColors.TextMuted,
+                        placeholderColor = IdeColors.TextMuted,
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                        cursorColor = IdeColors.TextPrimary
+                    )
                 )
                 Spacer(Modifier.width(8.dp))
-                IconButton(onClick = onSend) {
+                IconButton(onClick = onSend, enabled = input.isNotBlank()) {
                     Icon(
-                        imageVector = Icons.Filled.PlayArrow,
+                        imageVector = Icons.Filled.Send,
                         contentDescription = "Send",
-                        tint = IdeColors.AccentGreen
+                        tint = if (input.isNotBlank()) IdeColors.AccentGreen else IdeColors.TextMuted
                     )
                 }
             }
@@ -1098,100 +1014,6 @@ private fun buildFileTreeEntries(root: File): List<FileTreeEntry> {
     }
     visit(root, 0)
     return items
-}
-
-@Composable
-private fun NeonChatInputEditText(
-    value: String,
-    onValueChange: (String) -> Unit,
-    modifier: Modifier = Modifier,
-    onSend: () -> Unit
-) {
-    var rotatingBorder by remember { mutableStateOf<android.graphics.drawable.Drawable?>(null) }
-
-    AndroidView(
-        modifier = modifier,
-        factory = { ctx ->
-            val borderDrawable = AppCompatResources.getDrawable(ctx, R.drawable.bg_neon_input_rotate)
-            rotatingBorder = borderDrawable
-            val container = FrameLayout(ctx).apply {
-                background = borderDrawable
-                val paddingPx = (3 * resources.displayMetrics.density).toInt()
-                setPadding(paddingPx, paddingPx, paddingPx, paddingPx)
-                layoutParams = FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                )
-            }
-            val editText = EditText(ctx).apply {
-                setTextColor(IdeColors.TextPrimary.toArgb())
-                setHintTextColor(IdeColors.TextMuted.toArgb())
-                hint = CHAT_PLACEHOLDER_TEXT
-                setSingleLine(true)
-                imeOptions = EditorInfo.IME_ACTION_SEND
-                setBackgroundColor(IdeColors.Bg.toArgb())
-                setPadding(
-                    (12 * resources.displayMetrics.density).toInt(),
-                    (10 * resources.displayMetrics.density).toInt(),
-                    (12 * resources.displayMetrics.density).toInt(),
-                    (10 * resources.displayMetrics.density).toInt()
-                )
-                addTextChangedListener(object : TextWatcher {
-                    override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
-                    override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
-                    override fun afterTextChanged(s: Editable?) {
-                        onValueChange(s?.toString().orEmpty())
-                    }
-                })
-                setOnEditorActionListener { _, actionId, event ->
-                    val isEnter = event?.let {
-                        it.keyCode == KeyEvent.KEYCODE_ENTER && it.action == KeyEvent.ACTION_DOWN
-                    } == true
-                    if (actionId == EditorInfo.IME_ACTION_SEND || isEnter) {
-                        onSend()
-                        true
-                    } else {
-                        false
-                    }
-                }
-            }
-            container.addView(
-                editText,
-                FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                )
-            )
-            container
-        },
-        update = { container ->
-            val editText = container.getChildAt(0) as EditText
-            if (editText.text.toString() != value) {
-                editText.setText(value)
-                editText.setSelection(value.length)
-            }
-        }
-    )
-
-    DisposableEffect(rotatingBorder) {
-        val rotateDrawable = rotatingBorder as? android.graphics.drawable.RotateDrawable
-        if (rotateDrawable == null) {
-            onDispose { }
-        } else {
-            val animator = ValueAnimator.ofInt(0, 10000).apply {
-                duration = 2200L
-                repeatCount = ValueAnimator.INFINITE
-                interpolator = LinearInterpolator()
-                addUpdateListener {
-                    rotateDrawable.level = it.animatedValue as Int
-                }
-                start()
-            }
-            onDispose {
-                animator.cancel()
-            }
-        }
-    }
 }
 
 @Composable
