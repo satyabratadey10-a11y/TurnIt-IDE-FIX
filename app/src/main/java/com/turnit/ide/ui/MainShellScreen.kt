@@ -162,9 +162,6 @@ fun MainShellScreen(
             hasShellStarted = true
             isRunning = true
             onRunBuild()
-            shellEngine.setOutputCallback { output ->
-                consoleLogs.add(output)
-            }
             shellEngine.startShell()
             activeJob = scope.launch {
                 var sawActiveSession = false
@@ -193,6 +190,9 @@ fun MainShellScreen(
 
 
     LaunchedEffect(Unit) {
+        shellEngine.setOutputCallback { output ->
+            consoleLogs.add(output)
+        }
         startShellSession()
     }
     
