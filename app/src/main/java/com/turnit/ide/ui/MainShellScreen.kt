@@ -456,7 +456,7 @@ fun MainShellScreen(
                     .padding(pad)
             ) {
                 val totalWidthPx = constraints.maxWidth.toFloat().coerceAtLeast(1f)
-                val chatWeight = 1f - leftPaneWeight
+                val rightPaneWeight = 1f - leftPaneWeight
 
                 Row(modifier = Modifier.fillMaxSize()) {
                     Column(
@@ -502,7 +502,7 @@ fun MainShellScreen(
 
                     Box(
                         modifier = Modifier
-                            .weight(chatWeight)
+                            .weight(rightPaneWeight)
                             .fillMaxHeight()
                             .background(IdeColors.BgSurface)
                     ) {
