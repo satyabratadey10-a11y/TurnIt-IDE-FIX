@@ -1,11 +1,6 @@
 package com.turnit.ide.ui
 
 import android.net.Uri
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -14,7 +9,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -37,8 +32,6 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Chat
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Menu
@@ -59,7 +52,6 @@ import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.NavigationDrawerItemDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
@@ -70,6 +62,7 @@ import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -82,6 +75,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -107,10 +101,9 @@ import java.io.File
 enum class IdePane { TERMINAL, EDITOR, FILE_TREE }
 
 private const val CHAT_PLACEHOLDER_TEXT = "Type your message..."
-private val CHAT_PANEL_BREAKPOINT = 600.dp
-private const val CHAT_PANEL_WIDTH_RATIO = 0.92f
-private val CHAT_PANEL_DEFAULT_WIDTH = 360.dp
-private val CHAT_SCRIM_COLOR = Color(0x99000000)
+private const val CHAT_SPLIT_MIN_WEIGHT = 0.2f
+private const val CHAT_SPLIT_MAX_WEIGHT = 0.8f
+private val CHAT_SPLITTER_WIDTH = 8.dp
 private val CHAT_BUBBLE_MAX_WIDTH = 280.dp
 private val CHAT_USER_BUBBLE_COLOR = Color(0xFF1F2937)
 private val CHAT_ASSISTANT_BUBBLE_COLOR = Color(0xFF2563EB)
@@ -135,7 +128,7 @@ fun MainShellScreen(
     val context = LocalContext.current
 
     var activePane by remember { mutableStateOf(IdePane.TERMINAL) }
-    var isChatOpen by remember { mutableStateOf(false) }
+    var terminalWeight by remember { mutableFloatStateOf(0.6f) }
 
     val shellEngine = remember { ShellEngine(context) }
     val consoleLogs = remember {
@@ -441,13 +434,6 @@ fun MainShellScreen(
                         }
                     },
                     actions = {
-                        IconButton(onClick = { isChatOpen = !isChatOpen }) {
-                            Icon(
-                                imageVector = Icons.Filled.Chat,
-                                contentDescription = if (isChatOpen) "Close AI Chat" else "Open AI Chat",
-                                tint = if (isChatOpen) IdeColors.AccentBlue else IdeColors.TextSecondary
-                            )
-                        }
                         IconButton(onClick = {
                             if (isRunning || isBuildRunning) handleStopClick() else handleRunClick()
                         }) {
@@ -469,13 +455,13 @@ fun MainShellScreen(
                     .fillMaxSize()
                     .padding(pad)
             ) {
-                val chatPanelWidth =
-                    if (maxWidth < CHAT_PANEL_BREAKPOINT) maxWidth * CHAT_PANEL_WIDTH_RATIO else CHAT_PANEL_DEFAULT_WIDTH
+                val totalWidthPx = constraints.maxWidth.toFloat().coerceAtLeast(1f)
 
-                Box(modifier = Modifier.fillMaxSize()) {
+                Row(modifier = Modifier.fillMaxSize()) {
                     Column(
                         modifier = Modifier
-                            .fillMaxSize()
+                            .weight(terminalWeight)
+                            .fillMaxHeight()
                             .background(IdeColors.Bg)
                     ) {
                         PaneTabStrip(
@@ -499,70 +485,43 @@ fun MainShellScreen(
                         }
                     }
 
-                    if (isChatOpen) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(CHAT_SCRIM_COLOR)
-                                .clickable { isChatOpen = false }
-                        )
-                    }
-
-                    AnimatedVisibility(
-                        visible = isChatOpen,
-                        modifier = Modifier.align(Alignment.CenterEnd),
-                        enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
-                        exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut()
-                    ) {
-                        Surface(
-                            modifier = Modifier
-                                .fillMaxHeight()
-                                .width(chatPanelWidth),
-                            color = IdeColors.BgSurface,
-                            tonalElevation = 3.dp
-                        ) {
-                            Column(modifier = Modifier.fillMaxSize()) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = "AI Assistant",
-                                        color = IdeColors.TextPrimary,
-                                        fontFamily = FontFamily.Monospace,
-                                        fontSize = 14.sp,
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                    IconButton(onClick = { isChatOpen = false }) {
-                                        Icon(
-                                            imageVector = Icons.Filled.Close,
-                                            contentDescription = "Close AI Chat",
-                                            tint = IdeColors.TextSecondary
-                                        )
-                                    }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .width(CHAT_SPLITTER_WIDTH)
+                            .background(IdeColors.Border)
+                            .pointerInput(totalWidthPx) {
+                                detectHorizontalDragGestures { _, dragAmount ->
+                                    val delta = dragAmount / totalWidthPx
+                                    terminalWeight =
+                                        (terminalWeight + delta).coerceIn(CHAT_SPLIT_MIN_WEIGHT, CHAT_SPLIT_MAX_WEIGHT)
                                 }
-                                HorizontalDivider(color = IdeColors.Border, thickness = 1.dp)
-                                ChatPane(
-                                    modifier = Modifier.weight(1f),
-                                    selectedModel = selectedModel,
-                                    modelOptions = modelOptions,
-                                    onModelSelected = { model ->
-                                        if (model == addCustomModelOption) {
-                                            clearCustomModelInputs()
-                                            showCustomModelDialog = true
-                                        } else {
-                                            selectedModel = model
-                                        }
-                                    },
-                                    messages = chatMessages,
-                                    input = chatInput,
-                                    onInputChange = { chatInput = it },
-                                    onSend = sendChatPrompt
-                                )
                             }
-                        }
+                    )
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f - terminalWeight)
+                            .fillMaxHeight()
+                            .background(IdeColors.BgSurface)
+                    ) {
+                        ChatPane(
+                            modifier = Modifier.fillMaxSize(),
+                            selectedModel = selectedModel,
+                            modelOptions = modelOptions,
+                            onModelSelected = { model ->
+                                if (model == addCustomModelOption) {
+                                    clearCustomModelInputs()
+                                    showCustomModelDialog = true
+                                } else {
+                                    selectedModel = model
+                                }
+                            },
+                            messages = chatMessages,
+                            input = chatInput,
+                            onInputChange = { chatInput = it },
+                            onSend = sendChatPrompt
+                        )
                     }
                 }
             }
