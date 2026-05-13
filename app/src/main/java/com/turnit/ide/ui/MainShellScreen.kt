@@ -104,6 +104,7 @@ private const val CHAT_PLACEHOLDER_TEXT = "Type your message..."
 private const val CHAT_SPLIT_MIN_WEIGHT = 0.2f
 private const val CHAT_SPLIT_MAX_WEIGHT = 0.8f
 private val CHAT_SPLITTER_WIDTH = 8.dp
+private val CHAT_SPLITTER_COLOR = IdeColors.Border
 private val CHAT_BUBBLE_MAX_WIDTH = 280.dp
 private val CHAT_USER_BUBBLE_COLOR = Color(0xFF1F2937)
 private val CHAT_ASSISTANT_BUBBLE_COLOR = Color(0xFF2563EB)
@@ -490,7 +491,7 @@ fun MainShellScreen(
                         modifier = Modifier
                             .fillMaxHeight()
                             .width(CHAT_SPLITTER_WIDTH)
-                            .background(IdeColors.Border)
+                            .background(CHAT_SPLITTER_COLOR)
                             .pointerInput(totalWidthPx) {
                                 detectHorizontalDragGestures { _, dragAmount ->
                                     val delta = dragAmount / totalWidthPx
@@ -717,7 +718,7 @@ private fun ChatPane(
                         keyboardType = KeyboardType.Text,
                         imeAction = ImeAction.Send
                     ),
-                    keyboardActions = KeyboardActions(onSend = { onSend() }),
+                    keyboardActions = KeyboardActions(onAny = { onSend() }),
                     colors = TextFieldDefaults.colors(
                         focusedContainerColor = IdeColors.Bg,
                         unfocusedContainerColor = IdeColors.Bg,
