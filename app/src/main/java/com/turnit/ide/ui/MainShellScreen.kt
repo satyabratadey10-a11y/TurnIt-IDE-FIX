@@ -105,7 +105,6 @@ import com.turnit.ide.R
 import com.turnit.ide.ai.AiModel
 import com.turnit.ide.ai.AiChatClient
 import com.turnit.ide.ai.ChatMessage
-import com.turnit.ide.engine.ExtractionEngine
 import com.turnit.ide.engine.ShellEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -156,12 +155,10 @@ fun MainShellScreen(
     var activeJob by remember { mutableStateOf<Job?>(null) }
     var isRunning by remember { mutableStateOf(false) }
     var hasShellStarted by remember { mutableStateOf(false) }
-    var isShellReady by remember { mutableStateOf(false) }
-    var isExtractingRootfs by remember { mutableStateOf(false) }
 
     val testCompileCommand = "echo 'Testing Compilers...'; gcc --version; javac -version; pwd; ls -la"
     val startShellSession = {
-        if (isShellReady && !isRunning && !hasShellStarted) {
+        if (!isRunning && !hasShellStarted) {
             hasShellStarted = true
             isRunning = true
             onRunBuild()
@@ -196,41 +193,6 @@ fun MainShellScreen(
 
 
     LaunchedEffect(Unit) {
-        val rootfsDir = File(context.filesDir, "ubuntu-rootfs")
-        val shouldExtract = !rootfsDir.exists() || rootfsDir.listFiles()?.isEmpty() == true
-
-        if (shouldExtract) {
-            activePane = IdePane.TERMINAL
-            isExtractingRootfs = true
-            consoleLogs.add("Extracting Ubuntu RootFS... Please wait.\n")
-            val extracted = withContext(Dispatchers.IO) {
-                ExtractionEngine(context).bootstrapEnvironment(context) { output ->
-                    consoleLogs.add(output)
-                }
-            }
-            isExtractingRootfs = false
-            consoleLogs.add("[Ubuntu RootFS extraction complete]\n")
-            isShellReady = true
-            
-            // Wire the callback and force the V2 engine to boot the minimal shell
-            shellEngine.setOutputCallback { output -> 
-                consoleLogs.add(output + "\n") 
-            }
-            shellEngine.startShell()
-
-        } else {
-            isShellReady = true
-            
-            // If already extracted, wire the callback and boot immediately
-            shellEngine.setOutputCallback { output -> 
-                consoleLogs.add(output + "\n") 
-            }
-            shellEngine.startShell()
-
-        }
-    }
-
-    LaunchedEffect(isShellReady) {
         startShellSession()
     }
     
@@ -238,10 +200,6 @@ fun MainShellScreen(
         val trimmed = command.trim()
         if (trimmed.isBlank()) return@run false
         activePane = IdePane.TERMINAL
-        if (!isShellReady || isExtractingRootfs) {
-            consoleLogs.add("[Shell unavailable while RootFS is preparing]\n")
-            return@run false
-        }
         if (!isRunning) {
             startShellSession()
             consoleLogs.add("[Native shell is starting, please retry command]\n")
