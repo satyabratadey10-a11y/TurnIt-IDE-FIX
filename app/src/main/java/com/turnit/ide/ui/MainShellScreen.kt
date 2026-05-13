@@ -101,6 +101,7 @@ import java.io.File
 enum class IdePane { TERMINAL, EDITOR, FILE_TREE }
 
 private const val CHAT_PLACEHOLDER_TEXT = "Type your message..."
+private const val CHAT_SPLIT_DEFAULT_WEIGHT = 0.6f
 private const val CHAT_SPLIT_MIN_WEIGHT = 0.2f
 private const val CHAT_SPLIT_MAX_WEIGHT = 0.8f
 private val CHAT_SPLITTER_WIDTH = 8.dp
@@ -129,7 +130,7 @@ fun MainShellScreen(
     val context = LocalContext.current
 
     var activePane by remember { mutableStateOf(IdePane.TERMINAL) }
-    var leftPaneWeight by remember { mutableFloatStateOf(0.6f) }
+    var leftPaneWeight by remember { mutableFloatStateOf(CHAT_SPLIT_DEFAULT_WEIGHT) }
 
     val shellEngine = remember { ShellEngine(context) }
     val consoleLogs = remember {
@@ -718,7 +719,7 @@ private fun ChatPane(
                         keyboardType = KeyboardType.Text,
                         imeAction = ImeAction.Send
                     ),
-                    keyboardActions = KeyboardActions(onAny = { onSend() }),
+                    keyboardActions = KeyboardActions(onSend = { onSend() }),
                     colors = TextFieldDefaults.colors(
                         focusedContainerColor = IdeColors.Bg,
                         unfocusedContainerColor = IdeColors.Bg,
