@@ -128,7 +128,7 @@ fun MainShellScreen(
     val context = LocalContext.current
 
     var activePane by remember { mutableStateOf(IdePane.TERMINAL) }
-    var terminalWeight by remember { mutableFloatStateOf(0.6f) }
+    var leftPaneWeight by remember { mutableFloatStateOf(0.6f) }
 
     val shellEngine = remember { ShellEngine(context) }
     val consoleLogs = remember {
@@ -456,11 +456,12 @@ fun MainShellScreen(
                     .padding(pad)
             ) {
                 val totalWidthPx = constraints.maxWidth.toFloat().coerceAtLeast(1f)
+                val chatWeight = 1f - leftPaneWeight
 
                 Row(modifier = Modifier.fillMaxSize()) {
                     Column(
                         modifier = Modifier
-                            .weight(terminalWeight)
+                            .weight(leftPaneWeight)
                             .fillMaxHeight()
                             .background(IdeColors.Bg)
                     ) {
@@ -493,15 +494,15 @@ fun MainShellScreen(
                             .pointerInput(totalWidthPx) {
                                 detectHorizontalDragGestures { _, dragAmount ->
                                     val delta = dragAmount / totalWidthPx
-                                    terminalWeight =
-                                        (terminalWeight + delta).coerceIn(CHAT_SPLIT_MIN_WEIGHT, CHAT_SPLIT_MAX_WEIGHT)
+                                    leftPaneWeight =
+                                        (leftPaneWeight + delta).coerceIn(CHAT_SPLIT_MIN_WEIGHT, CHAT_SPLIT_MAX_WEIGHT)
                                 }
                             }
                     )
 
                     Box(
                         modifier = Modifier
-                            .weight(1f - terminalWeight)
+                            .weight(chatWeight)
                             .fillMaxHeight()
                             .background(IdeColors.BgSurface)
                     ) {
