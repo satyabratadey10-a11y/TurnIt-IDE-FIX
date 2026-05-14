@@ -95,7 +95,12 @@ class ShellEngine(private val context: Context) {
         val binDir = File(context.filesDir, "bin").apply { mkdirs() }
         val libToybox = File(context.applicationInfo.nativeLibraryDir, "libtoybox.so")
         val toyboxLink = File(binDir, "toybox")
-        if (!toyboxLink.exists()) {
+        if (!binDir.exists()) {
+            Log.w(TAG, "Toolchain bin directory unavailable at ${binDir.absolutePath}")
+        }
+        if (!libToybox.exists()) {
+            Log.w(TAG, "libtoybox.so missing at ${libToybox.absolutePath}")
+        } else if (!toyboxLink.exists()) {
             try {
                 Os.symlink(libToybox.absolutePath, toyboxLink.absolutePath)
             } catch (e: Exception) {
