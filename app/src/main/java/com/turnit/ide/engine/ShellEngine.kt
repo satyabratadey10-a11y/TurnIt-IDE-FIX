@@ -117,17 +117,13 @@ class ShellEngine(private val context: Context) {
                 null
             }
             if (currentTarget != desiredTarget) {
-                if (currentTarget != null) {
-                    try {
-                        Os.unlink(toyboxLink.absolutePath)
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Failed to remove existing toybox link", e)
-                    }
+                if (toyboxLink.exists()) {
+                    toyboxLink.delete()
                 }
                 try {
                     Os.symlink(desiredTarget, toyboxLink.absolutePath)
                 } catch (e: Exception) {
-                    Log.w(TAG, "Failed to create toybox symlink", e)
+                    Log.e(TAG, "Failed to create symlink: ${e.message}")
                 }
             }
         }
