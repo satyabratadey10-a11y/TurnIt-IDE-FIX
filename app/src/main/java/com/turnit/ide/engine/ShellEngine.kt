@@ -1,7 +1,9 @@
 package com.turnit.ide.engine
 
 import android.content.Context
+import android.system.Os
 import android.util.Log
+import java.io.File
 
 private const val TAG = "ShellEngine"
 
@@ -31,6 +33,7 @@ class ShellEngine(private val context: Context) {
         appendOutput("[ShellEngine] ────────────────────────────────────────────────")
 
         try {
+            val binPath = setupToolchain()
             process = ProcessBuilder(args).apply {
                 directory(context.filesDir)
                 redirectErrorStream(false)
@@ -40,7 +43,7 @@ class ShellEngine(private val context: Context) {
                     put("TMPDIR", context.cacheDir.absolutePath)
                     put("TERM", "xterm-256color")
                     put("LD_LIBRARY_PATH", context.applicationInfo.nativeLibraryDir)
-                    put("PATH", "/system/bin:/system/xbin:${context.applicationInfo.nativeLibraryDir}")
+                    put("PATH", "$binPath:/system/bin:/system/xbin:${context.applicationInfo.nativeLibraryDir}")
                 }
             }.start().also { proc ->
                 isRunning = true
@@ -86,6 +89,17 @@ class ShellEngine(private val context: Context) {
             isRunning = false
             appendOutput("[ShellEngine] Exited — code $code")
         }.apply { isDaemon = true; start() }
+    }
+
+    private fun setupToolchain(): String {
+        val binDir = File(context.filesDir, "bin").apply { mkdirs() }
+        val libToybox = File(context.applicationInfo.nativeLibraryDir, "libtoybox.so")
+        val toyboxLink = File(binDir, "toybox")
+        try {
+            Os.symlink(libToybox.absolutePath, toyboxLink.absolutePath)
+        } catch (_: Exception) {
+        }
+        return binDir.absolutePath
     }
 
     private fun appendOutput(line: String) {
