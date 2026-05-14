@@ -56,6 +56,35 @@ jobs:
         GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
       run: echo "$GOOGLE_SERVICES_JSON" > app/google-services.json
       
+    - name: Build Toybox (aarch64)
+      run: |
+        echo "Setting up NDK Toolchain..."
+        export NDK=$ANDROID_NDK_HOME
+        export TOOLCHAIN=$NDK/toolchains/llvm/prebuilt/linux-x86_64
+        export TARGET=aarch64-linux-android
+        export API=28
+
+        export CC="$TOOLCHAIN/bin/$TARGET$API-clang"
+        export CXX="$TOOLCHAIN/bin/$TARGET$API-clang++"
+        export AR="$TOOLCHAIN/bin/llvm-ar"
+        export STRIP="$TOOLCHAIN/bin/llvm-strip"
+        export RANLIB="$TOOLCHAIN/bin/llvm-ranlib"
+
+        echo "Cloning Toybox..."
+        git clone https://github.com/landley/toybox.git
+        cd toybox
+
+        echo "Configuring and Building Toybox..."
+        make defconfig
+        LDFLAGS="--static" make toybox -j$(nproc)
+
+        echo "Staging binary for Android Package Manager..."
+        mkdir -p ../app/src/main/jniLibs/arm64-v8a/
+        # We rename the executable to .so so Android's PackageManager extracts it with X_OK permissions natively
+        cp toybox ../app/src/main/jniLibs/arm64-v8a/libtoybox.so
+
+        echo "Toybox build complete!"
+
     - name: Build Debug APK (Kotlin + C++ JNI)
       run: ./gradlew clean :app:assembleDebug --no-build-cache
 
