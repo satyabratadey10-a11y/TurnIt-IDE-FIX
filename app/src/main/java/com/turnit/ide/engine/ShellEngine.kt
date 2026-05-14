@@ -1,7 +1,9 @@
 package com.turnit.ide.engine
 
 import android.content.Context
+import android.system.ErrnoException
 import android.system.Os
+import android.system.OsConstants
 import android.util.Log
 import java.io.File
 
@@ -94,7 +96,7 @@ class ShellEngine(private val context: Context) {
     private fun setupToolchain(): String {
         val binDir = File(context.filesDir, "bin").apply {
             if (!mkdirs() && !exists()) {
-                Log.w(TAG, "Failed to create toolchain bin directory at $absolutePath")
+                Log.w(TAG, "mkdirs() failed and bin directory is missing at $absolutePath")
             }
         }
         val libToybox = File(context.applicationInfo.nativeLibraryDir, "libtoybox.so")
@@ -105,7 +107,13 @@ class ShellEngine(private val context: Context) {
             val desiredTarget = libToybox.absolutePath
             val currentTarget = try {
                 Os.readlink(toyboxLink.absolutePath)
-            } catch (_: Exception) {
+            } catch (e: ErrnoException) {
+                if (e.errno != OsConstants.ENOENT) {
+                    Log.w(TAG, "Failed to read toybox link", e)
+                }
+                null
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to read toybox link", e)
                 null
             }
             if (currentTarget != desiredTarget) {
