@@ -92,20 +92,32 @@ class ShellEngine(private val context: Context) {
     }
 
     private fun setupToolchain(): String {
-        val binDir = File(context.filesDir, "bin").apply { mkdirs() }
+        val binDir = File(context.filesDir, "bin").apply {
+            if (!mkdirs() && !exists()) {
+                Log.w(TAG, "Toolchain bin directory unavailable at $absolutePath")
+            }
+        }
         val libToybox = File(context.applicationInfo.nativeLibraryDir, "libtoybox.so")
         val toyboxLink = File(binDir, "toybox")
-        if (!binDir.exists()) {
-            Log.w(TAG, "Toolchain bin directory unavailable at ${binDir.absolutePath}")
-        }
         if (!libToybox.exists()) {
             Log.w(TAG, "libtoybox.so missing at ${libToybox.absolutePath}")
-        } else if (!toyboxLink.exists()) {
-            toyboxLink.delete()
-            try {
-                Os.symlink(libToybox.absolutePath, toyboxLink.absolutePath)
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to create toybox symlink", e)
+        } else {
+            val desiredTarget = libToybox.absolutePath
+            val currentTarget = try {
+                Os.readlink(toyboxLink.absolutePath)
+            } catch (_: Exception) {
+                null
+            }
+            if (currentTarget != desiredTarget) {
+                try {
+                    Os.unlink(toyboxLink.absolutePath)
+                } catch (_: Exception) {
+                }
+                try {
+                    Os.symlink(desiredTarget, toyboxLink.absolutePath)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to create toybox symlink", e)
+                }
             }
         }
         return binDir.absolutePath
