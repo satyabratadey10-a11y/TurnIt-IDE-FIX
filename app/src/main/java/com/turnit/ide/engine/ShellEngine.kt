@@ -111,7 +111,8 @@ class ShellEngine(private val context: Context) {
             if (currentTarget != desiredTarget) {
                 try {
                     Os.unlink(toyboxLink.absolutePath)
-                } catch (_: Exception) {
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to remove existing toybox link", e)
                 }
                 try {
                     Os.symlink(desiredTarget, toyboxLink.absolutePath)
