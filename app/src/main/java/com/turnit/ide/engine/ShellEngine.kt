@@ -132,9 +132,12 @@ class ShellEngine(private val context: Context) {
                     val process = ProcessBuilder(toyboxLink.absolutePath, "--install", "-s", binDir.absolutePath)
                         .directory(binDir)
                         .start()
-                    process.waitFor()
+                    val exitCode = process.waitFor()
+                    if (exitCode != 0) {
+                        Log.e(TAG, "Toybox symlink install exited with code $exitCode")
+                    }
                 } catch (e: Exception) {
-                    Log.e(TAG, "Failed to install toybox symlinks: ${e.message}")
+                    Log.e(TAG, "Failed to install toybox symlinks: ${e.message}", e)
                 }
             }
         }
