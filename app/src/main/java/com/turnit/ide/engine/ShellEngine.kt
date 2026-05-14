@@ -101,6 +101,7 @@ class ShellEngine(private val context: Context) {
         if (!libToybox.exists()) {
             Log.w(TAG, "libtoybox.so missing at ${libToybox.absolutePath}")
         } else if (!toyboxLink.exists()) {
+            toyboxLink.delete()
             try {
                 Os.symlink(libToybox.absolutePath, toyboxLink.absolutePath)
             } catch (e: Exception) {
