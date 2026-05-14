@@ -94,7 +94,7 @@ class ShellEngine(private val context: Context) {
     private fun setupToolchain(): String {
         val binDir = File(context.filesDir, "bin").apply {
             if (!mkdirs() && !exists()) {
-                Log.w(TAG, "Toolchain bin directory unavailable at $absolutePath")
+                Log.w(TAG, "Failed to create toolchain bin directory at $absolutePath")
             }
         }
         val libToybox = File(context.applicationInfo.nativeLibraryDir, "libtoybox.so")
@@ -109,10 +109,12 @@ class ShellEngine(private val context: Context) {
                 null
             }
             if (currentTarget != desiredTarget) {
-                try {
-                    Os.unlink(toyboxLink.absolutePath)
-                } catch (e: Exception) {
-                    Log.w(TAG, "Failed to remove existing toybox link", e)
+                if (currentTarget != null) {
+                    try {
+                        Os.unlink(toyboxLink.absolutePath)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to remove existing toybox link", e)
+                    }
                 }
                 try {
                     Os.symlink(desiredTarget, toyboxLink.absolutePath)
