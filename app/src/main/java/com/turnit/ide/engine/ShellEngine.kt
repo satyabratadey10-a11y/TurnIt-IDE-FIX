@@ -127,6 +127,15 @@ class ShellEngine(private val context: Context) {
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to create symlink: ${e.message}", e)
                 }
+                // Tell toybox to generate symlinks for all 200+ standard Linux commands
+                try {
+                    val process = ProcessBuilder(toyboxLink.absolutePath, "--install", "-s", binDir.absolutePath)
+                        .directory(binDir)
+                        .start()
+                    process.waitFor()
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to install toybox symlinks: ${e.message}")
+                }
             }
         }
         return binDir.absolutePath
