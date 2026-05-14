@@ -95,9 +95,12 @@ class ShellEngine(private val context: Context) {
         val binDir = File(context.filesDir, "bin").apply { mkdirs() }
         val libToybox = File(context.applicationInfo.nativeLibraryDir, "libtoybox.so")
         val toyboxLink = File(binDir, "toybox")
-        try {
-            Os.symlink(libToybox.absolutePath, toyboxLink.absolutePath)
-        } catch (_: Exception) {
+        if (!toyboxLink.exists()) {
+            try {
+                Os.symlink(libToybox.absolutePath, toyboxLink.absolutePath)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to create toybox symlink", e)
+            }
         }
         return binDir.absolutePath
     }
