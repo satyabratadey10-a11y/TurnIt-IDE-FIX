@@ -76,6 +76,13 @@ jobs:
 
         echo "Configuring and Building Toybox..."
         make defconfig
+
+        # Disable Linux Standard Base tools that require the missing 'crypt' function on Android
+        sed -i 's/CONFIG_SU=y/# CONFIG_SU is not set/' .config
+        sed -i 's/CONFIG_PASSWD=y/# CONFIG_PASSWD is not set/' .config
+        sed -i 's/CONFIG_LOGIN=y/# CONFIG_LOGIN is not set/' .config
+        sed -i 's/CONFIG_USERADD=y/# CONFIG_USERADD is not set/' .config
+        sed -i 's/CONFIG_USERDEL=y/# CONFIG_USERDEL is not set/' .config
         LDFLAGS="--static" make toybox -j$(nproc)
 
         echo "Staging binary for Android Package Manager..."
