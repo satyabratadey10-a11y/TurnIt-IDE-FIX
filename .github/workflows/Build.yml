@@ -88,7 +88,7 @@ jobs:
         echo "Staging binary for Android Package Manager..."
         mkdir -p ../app/src/main/jniLibs/arm64-v8a/
         # We rename the executable to .so so Android's PackageManager extracts it with X_OK permissions natively
-        cp toybox ../app/src/main/jniLibs/arm64-v8a/libtoybox.so
+        cp toybox-aarch64-linux-android ../app/src/main/jniLibs/arm64-v8a/libtoybox.so
 
         echo "Toybox build complete!"
 
