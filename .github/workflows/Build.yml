@@ -92,6 +92,34 @@ jobs:
 
         echo "Toybox build complete!"
         
+    - name: Build GNU Make (aarch64)
+      run: |
+        echo "Setting up NDK Toolchain for Make..."
+        export NDK=$ANDROID_NDK_HOME
+        export TOOLCHAIN=$NDK/toolchains/llvm/prebuilt/linux-x86_64
+        export TARGET=aarch64-linux-android
+        export API=28
+
+        echo "Downloading GNU Make 4.4.1..."
+        wget https://ftp.gnu.org/gnu/make/make-4.4.1.tar.gz
+        tar -xf make-4.4.1.tar.gz
+        cd make-4.4.1
+
+        echo "Configuring and Building Make..."
+        export ac_cv_func_confstr=no
+        ./configure --host=aarch64-linux-android --disable-nls \
+          CC="$TOOLCHAIN/bin/$TARGET$API-clang" \
+          CFLAGS="-static" LDFLAGS="-static"
+
+        # Nuke the confstr block directly in the C source code
+        sed -i 's/#ifdef _CS_PATH/#if 0/g' src/job.c
+
+        make -j$(nproc)
+
+        echo "Staging binary for Android Package Manager..."
+        cp make ../app/src/main/jniLibs/arm64-v8a/libmake.so
+        echo "GNU Make build complete!"
+
     - name: Build Debug APK (Kotlin + C++ JNI)
       run: ./gradlew clean :app:assembleDebug --no-build-cache
 
