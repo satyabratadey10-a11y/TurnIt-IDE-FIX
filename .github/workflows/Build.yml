@@ -106,7 +106,7 @@ jobs:
         cd make-4.4.1
 
         echo "Configuring and Building Make..."
-        ./configure --host=aarch64-linux-android --disable-nls \
+        ./configure --host=aarch64-linux-android --disable-nls ac_cv_func_confstr=no \
           CC="$TOOLCHAIN/bin/$TARGET$API-clang" \
           CFLAGS="-static" LDFLAGS="-static"
 
