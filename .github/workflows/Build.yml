@@ -111,8 +111,8 @@ jobs:
           CC="$TOOLCHAIN/bin/$TARGET$API-clang" \
           CFLAGS="-static" LDFLAGS="-static"
 
-        # SLEDGEHAMMER FIX: Forcefully remove _CS_PATH from the compiler's visibility
-        echo "#undef _CS_PATH" > src/config.h
+        # Nuke the confstr block directly in the C source code
+        sed -i 's/#ifdef _CS_PATH/#if 0/g' src/job.c
 
         make -j$(nproc)
 
