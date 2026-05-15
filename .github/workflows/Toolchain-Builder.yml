@@ -18,7 +18,7 @@ jobs:
       - name: Build Termux Environment and Compress
         run: |
           # We run a virtual ARM64 Termux device right inside GitHub Actions
-          docker run --rm -v ${{ github.workspace }}:/workspace --platform linux/arm64 termux/termux-docker:latest bash -c "
+          docker run --rm -v ${{ github.workspace }}:/workspace termux/termux-docker:aarch64 bash -c "
             echo 'Updating Termux Repositories...'
             pkg update -y
             
