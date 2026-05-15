@@ -1,0 +1,45 @@
+name: Build Termux Toolchain Package (aarch64)
+
+on:
+  workflow_dispatch: # Allows you to trigger this manually from the Actions tab
+
+jobs:
+  build-and-compress:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU for ARM64 Emulation
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Build Termux Environment and Compress
+        run: |
+          # We run a virtual ARM64 Termux device right inside GitHub Actions
+          docker run --rm -v ${{ github.workspace }}:/workspace --platform linux/arm64 ghcr.io/termux/termux-docker:latest bash -c "
+            echo 'Updating Termux Repositories...'
+            pkg update -y
+            
+            echo 'Installing Compilers (C, C++, Java, Rust, Python, Make)...'
+            # We install p7zip here to do the ultra-compression natively in ARM64
+            pkg install -y clang make openjdk-17 rust python p7zip
+            
+            echo 'Cleaning up caches to save space...'
+            apt-get clean
+            rm -rf /data/data/com.termux/files/usr/tmp/*
+            
+            echo 'Compressing the Toolchain (Ultra LZMA2 Compression)...'
+            cd /data/data/com.termux/files
+            # -mx=9 ensures maximum compression to save your cellular data
+            7z a -t7z -m0=lzma2 -mx=9 /workspace/TurnIt-Toolchain-aarch64.7z usr/
+            
+            echo 'Compression Complete!'
+          "
+
+      - name: Upload Toolchain Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TurnIt-Toolchain-Archive
+          path: TurnIt-Toolchain-aarch64.7z
