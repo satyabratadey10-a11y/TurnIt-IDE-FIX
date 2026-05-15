@@ -106,9 +106,13 @@ jobs:
         cd make-4.4.1
 
         echo "Configuring and Building Make..."
-        ./configure --host=aarch64-linux-android --disable-nls ac_cv_func_confstr=no \
+        export ac_cv_func_confstr=no
+        ./configure --host=aarch64-linux-android --disable-nls \
           CC="$TOOLCHAIN/bin/$TARGET$API-clang" \
           CFLAGS="-static" LDFLAGS="-static"
+
+        # SLEDGEHAMMER FIX: Forcefully remove _CS_PATH from the compiler's visibility
+        echo "#undef _CS_PATH" > src/config.h
 
         make -j$(nproc)
 
