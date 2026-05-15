@@ -141,6 +141,17 @@ class ShellEngine(private val context: Context) {
                 }
             }
         }
+        // Link GNU Make
+        val libMake = File(context.applicationInfo.nativeLibraryDir, "libmake.so")
+        val makeLink = File(binDir, "make")
+        if (makeLink.exists()) {
+            makeLink.delete()
+        }
+        try {
+            Os.symlink(libMake.absolutePath, makeLink.absolutePath)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to create make symlink: ${e.message}")
+        }
         return binDir.absolutePath
     }
 
