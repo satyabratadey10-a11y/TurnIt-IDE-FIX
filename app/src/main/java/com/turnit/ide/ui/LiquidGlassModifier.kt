@@ -1,10 +1,12 @@
 package com.turnit.ide.ui
 
 import android.graphics.BitmapFactory
+import android.graphics.BitmapShader
+import android.graphics.RuntimeShader
+import android.graphics.Shader
 import android.os.Build
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.background
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -13,17 +15,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.isUnspecified
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageShader
-import androidx.compose.ui.graphics.RuntimeShader
-import androidx.compose.ui.graphics.RuntimeShaderBrush
-import androidx.compose.ui.graphics.TileMode
-import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.IntSize
 
 const val LIQUID_GLASS_SHADER = """
 // ===== Uniforms (inputs from Kotlin) =====
@@ -92,45 +89,42 @@ fun Modifier.liquidGlassBackground(
 
     val context = LocalContext.current
     val bitmap = remember(imageResId) {
-        BitmapFactory.decodeResource(context.resources, imageResId)?.asImageBitmap()
+        BitmapFactory.decodeResource(context.resources, imageResId)
     } ?: return@composed this.background(fallbackColor)
 
-    val imageShader = remember(bitmap) { ImageShader(bitmap, TileMode.Clamp, TileMode.Clamp) }
-    val runtimeShader = remember { RuntimeShader(LIQUID_GLASS_SHADER) }
-    val shaderBrush = remember(runtimeShader) { RuntimeShaderBrush(runtimeShader) }
-    var size by remember { mutableStateOf(IntSize.Zero) }
-    var mouse by remember { mutableStateOf(Offset.Unspecified) }
+    val shader = remember { RuntimeShader(LIQUID_GLASS_SHADER) }
+    var pointerPosition by remember { mutableStateOf(Offset.Unspecified) }
 
-    LaunchedEffect(imageShader) {
-        runtimeShader.setInputShader("image", imageShader)
+    val brush = remember(shader, pointerPosition, bitmap) {
+        // Bind the image to the AGSL shader
+        shader.setInputShader("image", BitmapShader(bitmap, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP))
+
+        // Pass resolution (requires layout size, assuming you pass it or hardcode for now)
+        shader.setFloatUniform("resolution", bitmap.width.toFloat(), bitmap.height.toFloat())
+
+        // Update mouse coordinates
+        if (!pointerPosition.isUnspecified) {
+            shader.setFloatUniform("mouse", pointerPosition.x, pointerPosition.y)
+        } else {
+            // Default to center if untouched
+            shader.setFloatUniform("mouse", bitmap.width / 2f, bitmap.height / 2f)
+        }
+
+        // Bridge the native shader to Compose
+        ShaderBrush(shader)
     }
 
     this
-        .onSizeChanged { newSize ->
-            size = newSize
-            if (mouse.isUnspecified) {
-                mouse = Offset(newSize.width / 2f, newSize.height / 2f)
-            }
-        }
-        .pointerInput(size) {
+        .pointerInput(Unit) {
             awaitPointerEventScope {
                 while (true) {
                     val event = awaitPointerEvent(PointerEventPass.Initial)
-                    event.changes.firstOrNull()?.position?.let { mouse = it }
+                    event.changes.firstOrNull()?.position?.let { pointerPosition = it }
                 }
             }
         }
         .drawWithContent {
-            if (size.width > 0 && size.height > 0) {
-                runtimeShader.setFloatUniform("resolution", size.width.toFloat(), size.height.toFloat())
-                val mousePoint = if (mouse.isUnspecified) {
-                    Offset(size.width / 2f, size.height / 2f)
-                } else {
-                    mouse
-                }
-                runtimeShader.setFloatUniform("mouse", mousePoint.x, mousePoint.y)
-            }
-            drawRect(shaderBrush)
+            drawRect(brush)
             drawContent()
         }
 }
