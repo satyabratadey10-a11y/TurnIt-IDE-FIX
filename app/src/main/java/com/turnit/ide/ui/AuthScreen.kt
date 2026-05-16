@@ -37,6 +37,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.turnit.ide.R
 import com.turnit.ide.auth.FirebaseAuthManager
 import kotlinx.coroutines.launch
 
@@ -54,7 +55,10 @@ fun AuthScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(IdeColors.Bg)
+            .liquidGlassBackground(
+                imageResId = R.drawable.bg_default,
+                fallbackColor = IdeColors.Bg
+            )
             .padding(20.dp),
         contentAlignment = Alignment.Center
     ) {
