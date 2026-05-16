@@ -89,6 +89,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.turnit.ide.R
 import com.turnit.ide.ai.AiModel
 import com.turnit.ide.ai.AiChatClient
 import com.turnit.ide.ai.ChatMessage
@@ -103,9 +104,9 @@ import java.io.File
 enum class IdePane { TERMINAL, EDITOR, FILE_TREE }
 
 private const val CHAT_PLACEHOLDER_TEXT = "Type your message..."
-private const val CHAT_SPLIT_DEFAULT_WEIGHT = 0.6f
-private const val CHAT_SPLIT_MIN_WEIGHT = 0.2f
-private const val CHAT_SPLIT_MAX_WEIGHT = 0.8f
+private const val CHAT_SPLIT_DEFAULT_WEIGHT = 0.7f
+private const val CHAT_SPLIT_MIN_WEIGHT = 0.4f
+private const val CHAT_SPLIT_MAX_WEIGHT = 0.85f
 private val CHAT_SPLITTER_WIDTH = 8.dp
 private val CHAT_SPLITTER_COLOR = IdeColors.Border
 private val CHAT_BUBBLE_MAX_WIDTH = 280.dp
@@ -508,7 +509,10 @@ fun MainShellScreen(
                         modifier = Modifier
                             .weight(rightPaneWeight)
                             .fillMaxHeight()
-                            .background(IdeColors.BgSurface)
+                            .liquidGlassBackground(
+                                imageResId = R.drawable.bg_default,
+                                fallbackColor = IdeColors.BgSurface
+                            )
                     ) {
                         ChatPane(
                             modifier = Modifier.fillMaxSize(),
@@ -624,7 +628,6 @@ private fun ChatPane(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(IdeColors.BgSurface)
             .padding(12.dp)
     ) {
         Box(
