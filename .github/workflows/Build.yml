@@ -55,6 +55,11 @@ jobs:
         cp toybox-aarch64-linux-android ../app/src/main/jniLibs/arm64-v8a/libtoybox.so
 
         echo "Toybox build complete!"
+
+    - name: Inject Real google-services.json
+      env:
+        GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+      run: echo "$GOOGLE_SERVICES_JSON" > app/google-services.json
         
     - name: Build Android Release/Debug
       run: ./gradlew assembleDebug
