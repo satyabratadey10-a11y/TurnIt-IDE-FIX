@@ -92,13 +92,26 @@ fun Modifier.liquidGlassBackground(
     val context = LocalContext.current
     val bitmap = remember(imageResId) {
         val drawable = ContextCompat.getDrawable(context, imageResId)
-        if (drawable != null) {
-            // Safely fallback to 1x1 if the XML drawable lacks intrinsic bounds
-            val width = if (drawable.intrinsicWidth > 0) drawable.intrinsicWidth else 1
-            val height = if (drawable.intrinsicHeight > 0) drawable.intrinsicHeight else 1
-            drawable.toBitmap(width = width, height = height, config = Bitmap.Config.ARGB_8888)
+        if (drawable != null && drawable.intrinsicWidth > 10 && drawable.intrinsicHeight > 10) {
+            drawable.toBitmap(config = Bitmap.Config.ARGB_8888)
         } else {
-            Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
+            // Generate a 800x800 textured grid bitmap so the liquid glass has something to refract
+            val gridBitmap = Bitmap.createBitmap(800, 800, Bitmap.Config.ARGB_8888)
+            val canvas = android.graphics.Canvas(gridBitmap)
+            val paint = android.graphics.Paint()
+
+            // Dark background
+            paint.color = android.graphics.Color.parseColor("#121212")
+            canvas.drawRect(0f, 0f, 800f, 800f, paint)
+
+            // Subtle grid lines
+            paint.color = android.graphics.Color.parseColor("#2A2A2A")
+            paint.strokeWidth = 2f
+            for (i in 0..800 step 40) {
+                canvas.drawLine(i.toFloat(), 0f, i.toFloat(), 800f, paint)
+                canvas.drawLine(0f, i.toFloat(), 800f, i.toFloat(), paint)
+            }
+            gridBitmap
         }
     }
 
