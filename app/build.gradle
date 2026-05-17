@@ -13,7 +13,7 @@ android {
         applicationId "com.turnit.ide"
         minSdk 26
         targetSdk 34
-        versionCode 1.6
+        versionCode 6
         versionName "1.6.6-beta"
         
         externalNativeBuild {
