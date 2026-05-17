@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.apache.commons.compress.archivers.tar.TarArchiveEntry
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
 import java.io.BufferedInputStream
 import java.io.File
@@ -42,7 +43,7 @@ class ExtractionEngine(private val appContext: Context? = null) {
 
             BufferedInputStream(rawStream).use { inputStream ->
                 TarArchiveInputStream(inputStream).use { tarIn ->
-                    var entry = tarIn.nextTarEntry
+                    var entry = tarIn.nextEntry as? TarArchiveEntry
                     var count = 0
                     while (entry != null) {
                         try {
@@ -67,7 +68,7 @@ class ExtractionEngine(private val appContext: Context? = null) {
                                 appendOutput("\n[DEBUG] Extracted $count files...")
                             }
                         } catch (_: Exception) {}
-                        entry = tarIn.nextTarEntry
+                        entry = tarIn.nextEntry as? TarArchiveEntry
                     }
                 }
             }
