@@ -92,7 +92,14 @@ fun Modifier.liquidGlassBackground(
     val context = LocalContext.current
     val bitmap = remember(imageResId) {
         val drawable = ContextCompat.getDrawable(context, imageResId)
-        drawable?.toBitmap() ?: Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
+        if (drawable != null) {
+            // Safely fallback to 1x1 if the XML drawable lacks intrinsic bounds
+            val width = if (drawable.intrinsicWidth > 0) drawable.intrinsicWidth else 1
+            val height = if (drawable.intrinsicHeight > 0) drawable.intrinsicHeight else 1
+            drawable.toBitmap(width = width, height = height, config = Bitmap.Config.ARGB_8888)
+        } else {
+            Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
+        }
     }
 
     val shader = remember { RuntimeShader(LIQUID_GLASS_SHADER) }
