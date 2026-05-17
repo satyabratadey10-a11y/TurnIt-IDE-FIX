@@ -27,6 +27,8 @@ import androidx.core.graphics.drawable.toBitmap
 private const val MIN_VALID_DRAWABLE_SIZE = 10
 private const val FALLBACK_GRID_SIZE = 800
 private const val FALLBACK_GRID_SPACING = 40
+private const val FALLBACK_GRID_BG_COLOR = "#121212"
+private const val FALLBACK_GRID_LINE_COLOR = "#2A2A2A"
 
 const val LIQUID_GLASS_SHADER = """
 // ===== Uniforms (inputs from Kotlin) =====
@@ -109,11 +111,11 @@ fun Modifier.liquidGlassBackground(
             val paint = android.graphics.Paint()
 
             // Dark background
-            paint.color = android.graphics.Color.parseColor("#121212")
+            paint.color = android.graphics.Color.parseColor(FALLBACK_GRID_BG_COLOR)
             canvas.drawRect(0f, 0f, FALLBACK_GRID_SIZE.toFloat(), FALLBACK_GRID_SIZE.toFloat(), paint)
 
             // Subtle grid lines
-            paint.color = android.graphics.Color.parseColor("#2A2A2A")
+            paint.color = android.graphics.Color.parseColor(FALLBACK_GRID_LINE_COLOR)
             paint.strokeWidth = 2f
             for (i in 0..FALLBACK_GRID_SIZE step FALLBACK_GRID_SPACING) {
                 canvas.drawLine(i.toFloat(), 0f, i.toFloat(), FALLBACK_GRID_SIZE.toFloat(), paint)
