@@ -343,6 +343,9 @@ fun MainShellScreen(
         drawerState = drawerState,
         drawerContent = {
             ModalDrawerSheet(
+                modifier = Modifier
+                    .width(250.dp)
+                    .liquidGlassBackground(R.drawable.bg_default),
                 drawerContainerColor = IdeColors.BgSurface,
                 drawerContentColor = IdeColors.TextPrimary
             ) {
