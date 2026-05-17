@@ -43,9 +43,13 @@ class ExtractionEngine(private val appContext: Context? = null) {
 
             BufferedInputStream(rawStream).use { inputStream ->
                 TarArchiveInputStream(inputStream).use { tarIn ->
-                    var entry = tarIn.nextEntry as? TarArchiveEntry
+                    var rawEntry = tarIn.nextEntry
                     var count = 0
-                    while (entry != null) {
+                    while (rawEntry != null) {
+                        val entry = rawEntry as? TarArchiveEntry ?: run {
+                            rawEntry = tarIn.nextEntry
+                            continue
+                        }
                         try {
                             val destFile = File(rootfsDir, entry.name)
                             if (entry.isDirectory) {
@@ -68,7 +72,7 @@ class ExtractionEngine(private val appContext: Context? = null) {
                                 appendOutput("\n[DEBUG] Extracted $count files...")
                             }
                         } catch (_: Exception) {}
-                        entry = tarIn.nextEntry as? TarArchiveEntry
+                        rawEntry = tarIn.nextEntry
                     }
                 }
             }
