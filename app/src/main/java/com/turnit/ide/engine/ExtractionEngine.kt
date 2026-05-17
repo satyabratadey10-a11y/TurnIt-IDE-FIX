@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.apache.commons.compress.archivers.tar.TarArchiveEntry
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
 import java.io.BufferedInputStream
 import java.io.File
@@ -42,22 +43,23 @@ class ExtractionEngine(private val appContext: Context? = null) {
 
             BufferedInputStream(rawStream).use { inputStream ->
                 TarArchiveInputStream(inputStream).use { tarIn ->
-                    var entry = tarIn.nextTarEntry
+                    var entry = tarIn.nextEntry
                     var count = 0
                     while (entry != null) {
+                        val tarEntry = entry as TarArchiveEntry
                         try {
-                            val destFile = File(rootfsDir, entry.name)
-                            if (entry.isDirectory) {
+                            val destFile = File(rootfsDir, tarEntry.name)
+                            if (tarEntry.isDirectory) {
                                 destFile.mkdirs()
-                            } else if (entry.isSymbolicLink) {
+                            } else if (tarEntry.isSymbolicLink) {
                                 // THE TERMUX LINK2SYMLINK BYPASS
                                 // Android blocks real symlinks. We write a plain text file containing
                                 // the magic string. PRoot will read this and emulate the symlink in RAM.
                                 destFile.parentFile?.mkdirs()
                                 FileOutputStream(destFile).use { out ->
-                                    out.write(("!<symlink>" + entry.linkName).toByteArray())
+                                    out.write(("!<symlink>" + tarEntry.linkName).toByteArray())
                                 }
-                            } else if (entry.isFile) {
+                            } else if (tarEntry.isFile) {
                                 destFile.parentFile?.mkdirs()
                                 FileOutputStream(destFile).use { out -> tarIn.copyTo(out) }
                                 destFile.setExecutable(true)
@@ -67,7 +69,7 @@ class ExtractionEngine(private val appContext: Context? = null) {
                                 appendOutput("\n[DEBUG] Extracted $count files...")
                             }
                         } catch (_: Exception) {}
-                        entry = tarIn.nextTarEntry
+                        entry = tarIn.nextEntry
                     }
                 }
             }
