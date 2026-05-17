@@ -24,10 +24,10 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -37,20 +37,37 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
 import com.turnit.ide.R
 import com.turnit.ide.auth.FirebaseAuthManager
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 
 @Composable
 fun AuthScreen(
     authManager: FirebaseAuthManager,
     onAuthenticated: () -> Unit
 ) {
-    val scope = rememberCoroutineScope()
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
-    var message by remember { mutableStateOf<String?>(null) }
+    var emailError by remember { mutableStateOf<String?>(null) }
+    var passwordError by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(false) }
+
+    LaunchedEffect(email) {
+        emailError = null
+        if (email.isBlank()) return@LaunchedEffect
+        delay(500)
+        val currentEmail = email.trim()
+        if (currentEmail.isBlank()) return@LaunchedEffect
+        authManager.checkEmailExists(currentEmail) { exists ->
+            if (email.trim() != currentEmail) return@checkEmailExists
+            emailError = if (exists) {
+                "these email is already existing,you use another email"
+            } else {
+                null
+            }
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -94,7 +111,10 @@ fun AuthScreen(
 
                 OutlinedTextField(
                     value = email,
-                    onValueChange = { email = it },
+                    onValueChange = {
+                        email = it
+                        emailError = null
+                    },
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text("Email") },
                     singleLine = true,
@@ -103,9 +123,20 @@ fun AuthScreen(
                     colors = outlinedFieldColors()
                 )
 
+                if (!emailError.isNullOrBlank()) {
+                    Text(
+                        text = emailError.orEmpty(),
+                        color = Color.Red,
+                        fontSize = 12.sp
+                    )
+                }
+
                 OutlinedTextField(
                     value = password,
-                    onValueChange = { password = it },
+                    onValueChange = {
+                        password = it
+                        passwordError = null
+                    },
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text("Password") },
                     singleLine = true,
@@ -115,24 +146,54 @@ fun AuthScreen(
                     colors = outlinedFieldColors()
                 )
 
+                if (!passwordError.isNullOrBlank()) {
+                    Text(
+                        text = passwordError.orEmpty(),
+                        color = Color.Red,
+                        fontSize = 12.sp
+                    )
+                }
+
                 Button(
                     onClick = {
-                        scope.launch {
-                            if (!validateCredentials(
-                                    email = email,
-                                    password = password,
-                                    onValidationError = { message = it }
-                                )
-                            ) {
-                                return@launch
-                            }
+                        val trimmedEmail = email.trim()
+                        emailError = null
+                        passwordError = null
+
+                        var hasValidationError = false
+                        if (trimmedEmail.isBlank()) {
+                            emailError = "Enter email"
+                            hasValidationError = true
+                        }
+                        if (password.isBlank()) {
+                            passwordError = "Enter password"
+                            hasValidationError = true
+                        }
+                        if (!hasValidationError) {
                             isLoading = true
-                            val result = authManager.signInWithEmail(email.trim(), password)
-                            isLoading = false
-                            if (result != null) {
-                                onAuthenticated()
-                            } else {
-                                message = authManager.lastErrorMessage ?: "Invalid email or password"
+                            authManager.checkEmailExists(trimmedEmail) { exists ->
+                                if (!exists) {
+                                    isLoading = false
+                                    emailError = "these gmail is not exist,you can singup or rewrite the correct email"
+                                    return@checkEmailExists
+                                }
+
+                                authManager.logIn(
+                                    email = trimmedEmail,
+                                    password = password,
+                                    onSuccess = {
+                                        isLoading = false
+                                        onAuthenticated()
+                                    },
+                                    onError = { exception ->
+                                        isLoading = false
+                                        passwordError = if (exception is FirebaseAuthInvalidCredentialsException) {
+                                            "the password is incorrect"
+                                        } else {
+                                            exception.message ?: "Login failed"
+                                        }
+                                    }
+                                )
                             }
                         }
                     },
@@ -145,22 +206,41 @@ fun AuthScreen(
 
                 Button(
                     onClick = {
-                        scope.launch {
-                            if (!validateCredentials(
-                                    email = email,
-                                    password = password,
-                                    onValidationError = { message = it }
-                                )
-                            ) {
-                                return@launch
-                            }
-                            isLoading = true
-                            val result = authManager.signUpWithEmail(email.trim(), password)
-                            isLoading = false
-                            if (result != null) {
-                                onAuthenticated()
-                            } else {
-                                message = authManager.lastErrorMessage ?: "Sign up failed. Check email/password requirements."
+                        val trimmedEmail = email.trim()
+                        emailError = null
+                        passwordError = null
+
+                        var hasValidationError = false
+                        if (trimmedEmail.isBlank()) {
+                            emailError = "Enter email"
+                            hasValidationError = true
+                        }
+                        if (password.isBlank()) {
+                            passwordError = "Enter password"
+                            hasValidationError = true
+                        }
+                        if (!hasValidationError) {
+                            authManager.checkEmailExists(trimmedEmail) { exists ->
+                                if (exists) {
+                                    emailError = "these email is already existing,you use another email"
+                                    return@checkEmailExists
+                                }
+
+                                if (emailError.isNullOrBlank() && passwordError.isNullOrBlank()) {
+                                    isLoading = true
+                                    authManager.signUp(
+                                        email = trimmedEmail,
+                                        password = password,
+                                        onSuccess = {
+                                            isLoading = false
+                                            onAuthenticated()
+                                        },
+                                        onError = { exception ->
+                                            isLoading = false
+                                            passwordError = exception.message ?: "Sign up failed"
+                                        }
+                                    )
+                                }
                             }
                         }
                     },
@@ -169,25 +249,6 @@ fun AuthScreen(
                     colors = ButtonDefaults.buttonColors(containerColor = IdeColors.AccentGreen)
                 ) {
                     Text("Sign Up")
-                }
-
-                Button(
-                    onClick = {
-                        message = "Google Sign-In will be enabled after app configuration is complete"
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !isLoading,
-                    colors = ButtonDefaults.buttonColors(containerColor = IdeColors.BgSurface)
-                ) {
-                    Text("Sign in with Google")
-                }
-
-                if (!message.isNullOrBlank()) {
-                    Text(
-                        text = message.orEmpty(),
-                        color = IdeColors.TextSecondary,
-                        fontSize = 12.sp
-                    )
                 }
             }
         }
@@ -225,16 +286,3 @@ private fun outlinedFieldColors() = OutlinedTextFieldDefaults.colors(
     unfocusedLabelColor = IdeColors.TextSecondary,
     cursorColor = IdeColors.AccentBlue
 )
-
-private inline fun validateCredentials(
-    email: String,
-    password: String,
-    onValidationError: (String) -> Unit
-): Boolean {
-    return if (email.isBlank() || password.isBlank()) {
-        onValidationError("Enter email and password")
-        false
-    } else {
-        true
-    }
-}
