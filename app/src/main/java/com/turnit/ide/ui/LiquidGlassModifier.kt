@@ -24,7 +24,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.toBitmap
 
-private const val MIN_VALID_DRAWABLE_SIZE = 10
+private const val MIN_DRAWABLE_SIZE_THRESHOLD = 10
 private const val FALLBACK_GRID_SIZE = 800
 private const val FALLBACK_GRID_SPACING = 40
 private const val FALLBACK_GRID_BG_COLOR = "#121212"
@@ -100,12 +100,12 @@ fun Modifier.liquidGlassBackground(
         val drawable = ContextCompat.getDrawable(context, imageResId)
         if (
             drawable != null &&
-            drawable.intrinsicWidth > MIN_VALID_DRAWABLE_SIZE &&
-            drawable.intrinsicHeight > MIN_VALID_DRAWABLE_SIZE
+            drawable.intrinsicWidth > MIN_DRAWABLE_SIZE_THRESHOLD &&
+            drawable.intrinsicHeight > MIN_DRAWABLE_SIZE_THRESHOLD
         ) {
             drawable.toBitmap(config = Bitmap.Config.ARGB_8888)
         } else {
-            // Generate a 800x800 textured grid bitmap so the liquid glass has something to refract
+            // Generate a textured grid bitmap so the liquid glass has something to refract
             val gridBitmap = Bitmap.createBitmap(FALLBACK_GRID_SIZE, FALLBACK_GRID_SIZE, Bitmap.Config.ARGB_8888)
             val canvas = android.graphics.Canvas(gridBitmap)
             val paint = android.graphics.Paint()
