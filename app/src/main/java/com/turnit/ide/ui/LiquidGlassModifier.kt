@@ -1,6 +1,6 @@
 package com.turnit.ide.ui
 
-import android.graphics.BitmapFactory
+import android.graphics.Bitmap
 import android.graphics.BitmapShader
 import android.graphics.RuntimeShader
 import android.graphics.Shader
@@ -21,6 +21,8 @@ import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
+import androidx.core.graphics.drawable.toBitmap
 
 const val LIQUID_GLASS_SHADER = """
 // ===== Uniforms (inputs from Kotlin) =====
@@ -89,8 +91,9 @@ fun Modifier.liquidGlassBackground(
 
     val context = LocalContext.current
     val bitmap = remember(imageResId) {
-        BitmapFactory.decodeResource(context.resources, imageResId)
-    } ?: return@composed this.background(fallbackColor)
+        val drawable = ContextCompat.getDrawable(context, imageResId)
+        drawable?.toBitmap() ?: Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
+    }
 
     val shader = remember { RuntimeShader(LIQUID_GLASS_SHADER) }
     var pointerPosition by remember { mutableStateOf(Offset.Unspecified) }
