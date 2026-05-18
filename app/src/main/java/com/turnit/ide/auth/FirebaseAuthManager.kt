@@ -1,6 +1,7 @@
 package com.turnit.ide.auth
 
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.GoogleAuthProvider
 
 class FirebaseAuthManager(
     private val firebaseAuth: FirebaseAuth = FirebaseAuth.getInstance()
@@ -33,6 +34,17 @@ class FirebaseAuthManager(
         onError: (Exception) -> Unit
     ) {
         firebaseAuth.signInWithEmailAndPassword(email, password)
+            .addOnSuccessListener { onSuccess() }
+            .addOnFailureListener { onError(it) }
+    }
+
+    fun signInWithGoogleToken(
+        idToken: String,
+        onSuccess: () -> Unit,
+        onError: (Exception) -> Unit
+    ) {
+        val credential = GoogleAuthProvider.getCredential(idToken, null)
+        FirebaseAuth.getInstance().signInWithCredential(credential)
             .addOnSuccessListener { onSuccess() }
             .addOnFailureListener { onError(it) }
     }
