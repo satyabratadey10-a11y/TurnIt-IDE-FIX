@@ -5,16 +5,20 @@ import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -24,6 +28,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -32,13 +37,23 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.credentials.CredentialManager
+import androidx.credentials.CustomCredential
+import androidx.credentials.GetCredentialException
+import androidx.credentials.GetCredentialRequest
+import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
+import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.turnit.ide.R
 import com.turnit.ide.auth.FirebaseAuthManager
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
@@ -46,11 +61,29 @@ fun AuthScreen(
     authManager: FirebaseAuthManager,
     onAuthenticated: () -> Unit
 ) {
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
-    var message by remember { mutableStateOf<String?>(null) }
+    var emailError by remember { mutableStateOf<String?>(null) }
+    var passwordError by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(false) }
+
+    LaunchedEffect(email) {
+        emailError = null
+        if (email.isBlank()) return@LaunchedEffect
+        delay(500)
+        val currentEmail = email.trim()
+        if (currentEmail.isBlank()) return@LaunchedEffect
+        authManager.checkEmailExists(currentEmail) { exists ->
+            if (email.trim() != currentEmail) return@checkEmailExists
+            emailError = if (exists) {
+                "these email is already existing,you use another email"
+            } else {
+                null
+            }
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -94,7 +127,10 @@ fun AuthScreen(
 
                 OutlinedTextField(
                     value = email,
-                    onValueChange = { email = it },
+                    onValueChange = {
+                        email = it
+                        emailError = null
+                    },
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text("Email") },
                     singleLine = true,
@@ -103,9 +139,20 @@ fun AuthScreen(
                     colors = outlinedFieldColors()
                 )
 
+                if (!emailError.isNullOrBlank()) {
+                    Text(
+                        text = emailError.orEmpty(),
+                        color = Color.Red,
+                        fontSize = 12.sp
+                    )
+                }
+
                 OutlinedTextField(
                     value = password,
-                    onValueChange = { password = it },
+                    onValueChange = {
+                        password = it
+                        passwordError = null
+                    },
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text("Password") },
                     singleLine = true,
@@ -115,24 +162,54 @@ fun AuthScreen(
                     colors = outlinedFieldColors()
                 )
 
+                if (!passwordError.isNullOrBlank()) {
+                    Text(
+                        text = passwordError.orEmpty(),
+                        color = Color.Red,
+                        fontSize = 12.sp
+                    )
+                }
+
                 Button(
                     onClick = {
-                        scope.launch {
-                            if (!validateCredentials(
-                                    email = email,
-                                    password = password,
-                                    onValidationError = { message = it }
-                                )
-                            ) {
-                                return@launch
-                            }
+                        val trimmedEmail = email.trim()
+                        emailError = null
+                        passwordError = null
+
+                        var hasValidationError = false
+                        if (trimmedEmail.isBlank()) {
+                            emailError = "Enter email"
+                            hasValidationError = true
+                        }
+                        if (password.isBlank()) {
+                            passwordError = "Enter password"
+                            hasValidationError = true
+                        }
+                        if (!hasValidationError) {
                             isLoading = true
-                            val result = authManager.signInWithEmail(email.trim(), password)
-                            isLoading = false
-                            if (result != null) {
-                                onAuthenticated()
-                            } else {
-                                message = authManager.lastErrorMessage ?: "Invalid email or password"
+                            authManager.checkEmailExists(trimmedEmail) { exists ->
+                                if (!exists) {
+                                    isLoading = false
+                                    emailError = "these gmail is not exist,you can singup or rewrite the correct email"
+                                    return@checkEmailExists
+                                }
+
+                                authManager.logIn(
+                                    email = trimmedEmail,
+                                    password = password,
+                                    onSuccess = {
+                                        isLoading = false
+                                        onAuthenticated()
+                                    },
+                                    onError = { exception ->
+                                        isLoading = false
+                                        passwordError = if (exception is FirebaseAuthInvalidCredentialsException) {
+                                            "the password is incorrect"
+                                        } else {
+                                            exception.message ?: "Login failed"
+                                        }
+                                    }
+                                )
                             }
                         }
                     },
@@ -145,22 +222,41 @@ fun AuthScreen(
 
                 Button(
                     onClick = {
-                        scope.launch {
-                            if (!validateCredentials(
-                                    email = email,
-                                    password = password,
-                                    onValidationError = { message = it }
-                                )
-                            ) {
-                                return@launch
-                            }
-                            isLoading = true
-                            val result = authManager.signUpWithEmail(email.trim(), password)
-                            isLoading = false
-                            if (result != null) {
-                                onAuthenticated()
-                            } else {
-                                message = authManager.lastErrorMessage ?: "Sign up failed. Check email/password requirements."
+                        val trimmedEmail = email.trim()
+                        emailError = null
+                        passwordError = null
+
+                        var hasValidationError = false
+                        if (trimmedEmail.isBlank()) {
+                            emailError = "Enter email"
+                            hasValidationError = true
+                        }
+                        if (password.isBlank()) {
+                            passwordError = "Enter password"
+                            hasValidationError = true
+                        }
+                        if (!hasValidationError) {
+                            authManager.checkEmailExists(trimmedEmail) { exists ->
+                                if (exists) {
+                                    emailError = "these email is already existing,you use another email"
+                                    return@checkEmailExists
+                                }
+
+                                if (emailError.isNullOrBlank() && passwordError.isNullOrBlank()) {
+                                    isLoading = true
+                                    authManager.signUp(
+                                        email = trimmedEmail,
+                                        password = password,
+                                        onSuccess = {
+                                            isLoading = false
+                                            onAuthenticated()
+                                        },
+                                        onError = { exception ->
+                                            isLoading = false
+                                            passwordError = exception.message ?: "Sign up failed"
+                                        }
+                                    )
+                                }
                             }
                         }
                     },
@@ -173,21 +269,81 @@ fun AuthScreen(
 
                 Button(
                     onClick = {
-                        message = "Google Sign-In will be enabled after app configuration is complete"
+                        scope.launch {
+                            emailError = null
+                            passwordError = null
+                            isLoading = true
+
+                            val resourceId = context.resources.getIdentifier(
+                                "default_web_client_id",
+                                "string",
+                                context.packageName
+                            )
+                            val webClientId = if (resourceId != 0) {
+                                context.getString(resourceId)
+                            } else {
+                                ""
+                            }
+
+                            if (webClientId.isBlank()) {
+                                isLoading = false
+                                return@launch
+                            }
+
+                            val credentialManager = CredentialManager.create(context)
+                            val googleIdOption = GetGoogleIdOption.Builder()
+                                .setFilterByAuthorizedAccounts(false)
+                                .setServerClientId(webClientId)
+                                .build()
+                            val request = GetCredentialRequest.Builder()
+                                .addCredentialOption(googleIdOption)
+                                .build()
+
+                            try {
+                                val result = credentialManager.getCredential(context, request)
+                                val credential = result.credential
+                                if (credential is CustomCredential &&
+                                    credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
+                                ) {
+                                    val googleCredential = GoogleIdTokenCredential.createFrom(credential.data)
+                                    authManager.signInWithGoogleToken(
+                                        idToken = googleCredential.idToken,
+                                        onSuccess = {
+                                            isLoading = false
+                                            onAuthenticated()
+                                        },
+                                        onError = { exception ->
+                                            isLoading = false
+                                            passwordError = exception.message ?: "Google sign-in failed"
+                                        }
+                                    )
+                                } else {
+                                    isLoading = false
+                                }
+                            } catch (exception: GetCredentialException) {
+                                isLoading = false
+                            } catch (exception: Exception) {
+                                isLoading = false
+                                passwordError = exception.message ?: "Google sign-in failed"
+                            }
+                        }
                     },
                     modifier = Modifier.fillMaxWidth(),
                     enabled = !isLoading,
-                    colors = ButtonDefaults.buttonColors(containerColor = IdeColors.BgSurface)
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color.White,
+                        contentColor = Color.Black
+                    ),
+                    border = BorderStroke(1.dp, Color.LightGray)
                 ) {
-                    Text("Sign in with Google")
-                }
-
-                if (!message.isNullOrBlank()) {
-                    Text(
-                        text = message.orEmpty(),
-                        color = IdeColors.TextSecondary,
-                        fontSize = 12.sp
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Image(
+                            painter = painterResource(R.drawable.ic_google_logo),
+                            contentDescription = "Google logo"
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("Sign in with Google")
+                    }
                 }
             }
         }
@@ -225,16 +381,3 @@ private fun outlinedFieldColors() = OutlinedTextFieldDefaults.colors(
     unfocusedLabelColor = IdeColors.TextSecondary,
     cursorColor = IdeColors.AccentBlue
 )
-
-private inline fun validateCredentials(
-    email: String,
-    password: String,
-    onValidationError: (String) -> Unit
-): Boolean {
-    return if (email.isBlank() || password.isBlank()) {
-        onValidationError("Enter email and password")
-        false
-    } else {
-        true
-    }
-}
