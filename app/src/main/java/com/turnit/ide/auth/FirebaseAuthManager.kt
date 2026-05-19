@@ -32,7 +32,7 @@ class FirebaseAuthManager(
         firebaseAuth.createUserWithEmailAndPassword(email, password)
             .addOnSuccessListener {
                 firebaseAuth.currentUser?.sendEmailVerification()
-                FirebaseAuth.getInstance().signOut()
+                firebaseAuth.signOut()
                 onSuccess("Account created! Please check your email to verify before logging in.")
             }
             .addOnFailureListener { onError(it) }
@@ -51,7 +51,7 @@ class FirebaseAuthManager(
                     onSuccess()
                 } else {
                     user?.sendEmailVerification()
-                    FirebaseAuth.getInstance().signOut()
+                    firebaseAuth.signOut()
                     onError(EmailNotVerifiedException("Please verify your email. A new link has been sent."))
                 }
             }
