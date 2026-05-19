@@ -1,6 +1,5 @@
 package com.turnit.ide.ui
 
-import android.util.Patterns
 import androidx.compose.animation.animateColor
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.infiniteRepeatable
@@ -29,7 +28,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -49,12 +47,11 @@ import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialException
-import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
+import com.google.firebase.auth.FirebaseAuthUserCollisionException
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.turnit.ide.R
 import com.turnit.ide.auth.FirebaseAuthManager
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
@@ -69,25 +66,6 @@ fun AuthScreen(
     var emailError by remember { mutableStateOf<String?>(null) }
     var passwordError by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(false) }
-
-    LaunchedEffect(email) {
-        emailError = null
-        if (email.isBlank()) return@LaunchedEffect
-        delay(500)
-        val currentEmail = email.trim()
-        if (currentEmail.isNotBlank() && Patterns.EMAIL_ADDRESS.matcher(currentEmail).matches()) {
-            authManager.checkEmailExists(currentEmail) { exists ->
-                if (email.trim() != currentEmail) return@checkEmailExists
-                emailError = if (exists) {
-                    "these email is already existing,you use another email"
-                } else {
-                    null
-                }
-            }
-        } else {
-            emailError = null
-        }
-    }
 
     Box(
         modifier = Modifier
@@ -176,48 +154,22 @@ fun AuthScreen(
 
                 Button(
                     onClick = {
-                        val trimmedEmail = email.trim()
                         emailError = null
                         passwordError = null
-
-                        var hasValidationError = false
-                        if (trimmedEmail.isBlank()) {
-                            emailError = "Enter email"
-                            hasValidationError = true
-                        } else if (!Patterns.EMAIL_ADDRESS.matcher(trimmedEmail).matches()) {
-                            emailError = "Enter a valid email"
-                            hasValidationError = true
-                        }
-                        if (password.isBlank()) {
-                            passwordError = "Enter password"
-                            hasValidationError = true
-                        }
-                        if (!hasValidationError) {
+                        if (email.isNotBlank() && password.isNotBlank()) {
                             isLoading = true
-                            authManager.checkEmailExists(trimmedEmail) { exists ->
-                                if (!exists) {
+                            authManager.logIn(
+                                email = email,
+                                password = password,
+                                onSuccess = {
                                     isLoading = false
-                                    emailError = "these gmail is not exist,you can singup or rewrite the correct email"
-                                    return@checkEmailExists
+                                    onAuthenticated()
+                                },
+                                onError = {
+                                    isLoading = false
+                                    passwordError = "the password is incorrect or email does not exist"
                                 }
-
-                                authManager.logIn(
-                                    email = trimmedEmail,
-                                    password = password,
-                                    onSuccess = {
-                                        isLoading = false
-                                        onAuthenticated()
-                                    },
-                                    onError = { exception ->
-                                        isLoading = false
-                                        passwordError = if (exception is FirebaseAuthInvalidCredentialsException) {
-                                            "the password is incorrect"
-                                        } else {
-                                            exception.message ?: "Login failed"
-                                        }
-                                    }
-                                )
-                            }
+                            )
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
@@ -229,42 +181,26 @@ fun AuthScreen(
 
                 Button(
                     onClick = {
-                        val trimmedEmail = email.trim()
                         emailError = null
                         passwordError = null
-
-                        var hasValidationError = false
-                        if (trimmedEmail.isBlank()) {
-                            emailError = "Enter email"
-                            hasValidationError = true
-                        }
-                        if (password.isBlank()) {
-                            passwordError = "Enter password"
-                            hasValidationError = true
-                        }
-                        if (!hasValidationError) {
-                            authManager.checkEmailExists(trimmedEmail) { exists ->
-                                if (exists) {
-                                    emailError = "these email is already existing,you use another email"
-                                    return@checkEmailExists
+                        if (email.isNotBlank() && password.isNotBlank()) {
+                            isLoading = true
+                            authManager.signUp(
+                                email = email,
+                                password = password,
+                                onSuccess = {
+                                    isLoading = false
+                                    onAuthenticated()
+                                },
+                                onError = { exception ->
+                                    isLoading = false
+                                    if (exception is FirebaseAuthUserCollisionException) {
+                                        emailError = "these email is already existing,you use another email"
+                                    } else {
+                                        emailError = exception.localizedMessage
+                                    }
                                 }
-
-                                if (emailError.isNullOrBlank() && passwordError.isNullOrBlank()) {
-                                    isLoading = true
-                                    authManager.signUp(
-                                        email = trimmedEmail,
-                                        password = password,
-                                        onSuccess = {
-                                            isLoading = false
-                                            onAuthenticated()
-                                        },
-                                        onError = { exception ->
-                                            isLoading = false
-                                            passwordError = exception.message ?: "Sign up failed"
-                                        }
-                                    )
-                                }
-                            }
+                            )
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
