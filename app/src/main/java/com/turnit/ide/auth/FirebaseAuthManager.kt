@@ -26,11 +26,15 @@ class FirebaseAuthManager(
     fun signUp(
         email: String,
         password: String,
-        onSuccess: () -> Unit,
+        onSuccess: (String) -> Unit,
         onError: (Exception) -> Unit
     ) {
         firebaseAuth.createUserWithEmailAndPassword(email, password)
-            .addOnSuccessListener { onSuccess() }
+            .addOnSuccessListener {
+                firebaseAuth.currentUser?.sendEmailVerification()
+                FirebaseAuth.getInstance().signOut()
+                onSuccess("Account created! Please check your email to verify before logging in.")
+            }
             .addOnFailureListener { onError(it) }
     }
 
@@ -41,7 +45,16 @@ class FirebaseAuthManager(
         onError: (Exception) -> Unit
     ) {
         firebaseAuth.signInWithEmailAndPassword(email, password)
-            .addOnSuccessListener { onSuccess() }
+            .addOnSuccessListener {
+                val user = firebaseAuth.currentUser
+                if (user?.isEmailVerified == true) {
+                    onSuccess()
+                } else {
+                    user?.sendEmailVerification()
+                    FirebaseAuth.getInstance().signOut()
+                    onError(EmailNotVerifiedException("Please verify your email. A new link has been sent."))
+                }
+            }
             .addOnFailureListener { onError(it) }
     }
 
@@ -56,3 +69,5 @@ class FirebaseAuthManager(
             .addOnFailureListener { onError(it) }
     }
 }
+
+class EmailNotVerifiedException(message: String) : Exception(message)

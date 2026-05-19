@@ -65,6 +65,7 @@ fun AuthScreen(
     var password by remember { mutableStateOf("") }
     var emailError by remember { mutableStateOf<String?>(null) }
     var passwordError by remember { mutableStateOf<String?>(null) }
+    var successMessage by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(false) }
 
     Box(
@@ -152,10 +153,19 @@ fun AuthScreen(
                     )
                 }
 
+                if (!successMessage.isNullOrBlank()) {
+                    Text(
+                        text = successMessage.orEmpty(),
+                        color = Color.Green,
+                        fontSize = 12.sp
+                    )
+                }
+
                 Button(
                     onClick = {
                         emailError = null
                         passwordError = null
+                        successMessage = null
                         if (email.isNotBlank() && password.isNotBlank()) {
                             isLoading = true
                             authManager.logIn(
@@ -165,9 +175,15 @@ fun AuthScreen(
                                     isLoading = false
                                     onAuthenticated()
                                 },
-                                onError = {
+                                onError = { exception ->
                                     isLoading = false
-                                    passwordError = "the password is incorrect or email does not exist"
+                                    val message = exception.localizedMessage
+                                        ?: "the password is incorrect or email does not exist"
+                                    if (message.contains("verify your email", ignoreCase = true)) {
+                                        emailError = message
+                                    } else {
+                                        passwordError = "the password is incorrect or email does not exist"
+                                    }
                                 }
                             )
                         }
@@ -183,14 +199,16 @@ fun AuthScreen(
                     onClick = {
                         emailError = null
                         passwordError = null
+                        successMessage = null
                         if (email.isNotBlank() && password.isNotBlank()) {
                             isLoading = true
                             authManager.signUp(
                                 email = email,
                                 password = password,
-                                onSuccess = {
+                                onSuccess = { message ->
                                     isLoading = false
-                                    onAuthenticated()
+                                    emailError = null
+                                    successMessage = message
                                 },
                                 onError = { exception ->
                                     isLoading = false
@@ -215,6 +233,7 @@ fun AuthScreen(
                         scope.launch {
                             emailError = null
                             passwordError = null
+                            successMessage = null
                             isLoading = true
 
                             val resourceId = context.resources.getIdentifier(
