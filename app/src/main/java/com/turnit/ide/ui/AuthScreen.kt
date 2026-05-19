@@ -1,5 +1,6 @@
 package com.turnit.ide.ui
 
+import android.util.Patterns
 import androidx.compose.animation.animateColor
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.infiniteRepeatable
@@ -74,14 +75,17 @@ fun AuthScreen(
         if (email.isBlank()) return@LaunchedEffect
         delay(500)
         val currentEmail = email.trim()
-        if (currentEmail.isBlank()) return@LaunchedEffect
-        authManager.checkEmailExists(currentEmail) { exists ->
-            if (email.trim() != currentEmail) return@checkEmailExists
-            emailError = if (exists) {
-                "these email is already existing,you use another email"
-            } else {
-                null
+        if (currentEmail.isNotBlank() && Patterns.EMAIL_ADDRESS.matcher(currentEmail).matches()) {
+            authManager.checkEmailExists(currentEmail) { exists ->
+                if (email.trim() != currentEmail) return@checkEmailExists
+                emailError = if (exists) {
+                    "these email is already existing,you use another email"
+                } else {
+                    null
+                }
             }
+        } else {
+            emailError = null
         }
     }
 
@@ -179,6 +183,9 @@ fun AuthScreen(
                         var hasValidationError = false
                         if (trimmedEmail.isBlank()) {
                             emailError = "Enter email"
+                            hasValidationError = true
+                        } else if (!Patterns.EMAIL_ADDRESS.matcher(trimmedEmail).matches()) {
+                            emailError = "Enter a valid email"
                             hasValidationError = true
                         }
                         if (password.isBlank()) {

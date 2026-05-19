@@ -9,10 +9,17 @@ class FirebaseAuthManager(
     fun isAuthenticated(): Boolean = firebaseAuth.currentUser != null
 
     fun checkEmailExists(email: String, onResult: (Boolean) -> Unit) {
+        if (email.isBlank()) {
+            onResult(false)
+            return
+        }
         firebaseAuth.fetchSignInMethodsForEmail(email)
-            .addOnCompleteListener { task ->
-                val methods = task.result?.signInMethods
-                onResult(task.isSuccessful && !methods.isNullOrEmpty())
+            .addOnSuccessListener { result ->
+                val isNewUser = result.signInMethods?.isEmpty() ?: true
+                onResult(!isNewUser)
+            }
+            .addOnFailureListener {
+                onResult(false)
             }
     }
 
