@@ -19,7 +19,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
 
-private const val TWO_PI = 6.2831f
+private const val TWO_PI = 6.2831855f
 private const val WAVE_AMPLITUDE = 6.0f
 private const val VIGNETTE_BOOST = 0.08f
 
@@ -27,16 +27,19 @@ const val LIQUID_GLASS_SHADER = """
 uniform shader input;
 uniform float2 resolution;
 uniform float time;
+uniform float waveFrequency;
+uniform float waveAmplitude;
+uniform float vignetteBoost;
 
 half4 main(float2 fragCoord) {
     float2 safeResolution = max(resolution, float2(1.0, 1.0));
     float2 uv = fragCoord / safeResolution;
-    float waveX = sin((uv.y + time) * $TWO_PI) * $WAVE_AMPLITUDE;
-    float waveY = cos((uv.x + time) * $TWO_PI) * $WAVE_AMPLITUDE;
+    float waveX = sin((uv.y + time) * waveFrequency) * waveAmplitude;
+    float waveY = cos((uv.x + time) * waveFrequency) * waveAmplitude;
     float2 distorted = fragCoord + float2(waveX, waveY);
     half4 color = input.eval(distorted);
     float vignette = smoothstep(0.85, 0.25, distance(uv, float2(0.5, 0.5)));
-    color.rgb += $VIGNETTE_BOOST * vignette;
+    color.rgb += vignetteBoost * vignette;
     return color;
 }
 """
@@ -70,6 +73,9 @@ fun Modifier.liquidGlassBackground(
         .drawWithContent {
             shader.setFloatUniform("resolution", size.width, size.height)
             shader.setFloatUniform("time", time)
+            shader.setFloatUniform("waveFrequency", TWO_PI)
+            shader.setFloatUniform("waveAmplitude", WAVE_AMPLITUDE)
+            shader.setFloatUniform("vignetteBoost", VIGNETTE_BOOST)
             drawContent()
         }
 }
