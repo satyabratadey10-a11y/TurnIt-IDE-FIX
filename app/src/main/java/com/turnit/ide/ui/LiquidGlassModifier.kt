@@ -19,6 +19,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
 
+private const val TWO_PI = 6.2831f
+private const val WAVE_AMPLITUDE = 6.0f
+private const val VIGNETTE_BOOST = 0.08f
+
 const val LIQUID_GLASS_SHADER = """
 uniform shader input;
 uniform float2 resolution;
@@ -27,12 +31,12 @@ uniform float time;
 half4 main(float2 fragCoord) {
     float2 safeResolution = max(resolution, float2(1.0, 1.0));
     float2 uv = fragCoord / safeResolution;
-    float waveX = sin((uv.y + time) * 6.2831) * 6.0;
-    float waveY = cos((uv.x + time) * 6.2831) * 6.0;
+    float waveX = sin((uv.y + time) * $TWO_PI) * $WAVE_AMPLITUDE;
+    float waveY = cos((uv.x + time) * $TWO_PI) * $WAVE_AMPLITUDE;
     float2 distorted = fragCoord + float2(waveX, waveY);
     half4 color = input.eval(distorted);
     float vignette = smoothstep(0.85, 0.25, distance(uv, float2(0.5, 0.5)));
-    color.rgb += 0.08 * vignette;
+    color.rgb += $VIGNETTE_BOOST * vignette;
     return color;
 }
 """
