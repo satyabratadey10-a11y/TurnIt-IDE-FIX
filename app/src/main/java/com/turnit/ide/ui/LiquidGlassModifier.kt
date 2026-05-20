@@ -54,8 +54,14 @@ fun Modifier.liquidGlassBackground(
 
     val shader = remember { RuntimeShader(LIQUID_GLASS_SHADER) }
     val runtimeEffect = remember(shader) {
+        shader.setFloatUniform("resolution", 1f, 1f)
+        shader.setFloatUniform("time", 0f)
+        shader.setFloatUniform("waveFrequency", WAVE_FREQUENCY)
+        shader.setFloatUniform("waveAmplitude", WAVE_AMPLITUDE)
+        shader.setFloatUniform("vignetteBoost", VIGNETTE_BOOST)
         RenderEffect.createRuntimeShaderEffect(shader, "input")
     }
+    val composeEffect = remember(runtimeEffect) { runtimeEffect.asComposeRenderEffect() }
     val transition = rememberInfiniteTransition(label = "liquid_glass_transition")
     val time by transition.animateFloat(
         initialValue = 0f,
@@ -68,9 +74,7 @@ fun Modifier.liquidGlassBackground(
     )
 
     this
-        .graphicsLayer {
-            renderEffect = runtimeEffect.asComposeRenderEffect()
-        }
+        .graphicsLayer(renderEffect = composeEffect)
         .drawWithContent {
             shader.setFloatUniform("resolution", size.width, size.height)
             shader.setFloatUniform("time", time)
