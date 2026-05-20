@@ -19,7 +19,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
 
-private const val TWO_PI = 6.2831855f
+private const val WAVE_FREQUENCY = 6.2831855f
 private const val WAVE_AMPLITUDE = 6.0f
 private const val VIGNETTE_BOOST = 0.08f
 
@@ -73,7 +73,7 @@ fun Modifier.liquidGlassBackground(
         .drawWithContent {
             shader.setFloatUniform("resolution", size.width, size.height)
             shader.setFloatUniform("time", time)
-            shader.setFloatUniform("waveFrequency", TWO_PI)
+            shader.setFloatUniform("waveFrequency", WAVE_FREQUENCY)
             shader.setFloatUniform("waveAmplitude", WAVE_AMPLITUDE)
             shader.setFloatUniform("vignetteBoost", VIGNETTE_BOOST)
             drawContent()
