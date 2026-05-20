@@ -54,8 +54,6 @@ fun Modifier.liquidGlassBackground(
 
     val shader = remember { RuntimeShader(LIQUID_GLASS_SHADER) }
     val runtimeEffect = remember(shader) {
-        shader.setFloatUniform("resolution", 1f, 1f)
-        shader.setFloatUniform("time", 0f)
         shader.setFloatUniform("waveFrequency", WAVE_FREQUENCY)
         shader.setFloatUniform("waveAmplitude", WAVE_AMPLITUDE)
         shader.setFloatUniform("vignetteBoost", VIGNETTE_BOOST)
@@ -77,9 +75,6 @@ fun Modifier.liquidGlassBackground(
         .graphicsLayer(renderEffect = composeEffect)
         .drawWithCache {
             shader.setFloatUniform("resolution", size.width, size.height)
-            shader.setFloatUniform("waveFrequency", WAVE_FREQUENCY)
-            shader.setFloatUniform("waveAmplitude", WAVE_AMPLITUDE)
-            shader.setFloatUniform("vignetteBoost", VIGNETTE_BOOST)
             onDrawWithContent {
                 shader.setFloatUniform("time", time)
                 drawContent()
