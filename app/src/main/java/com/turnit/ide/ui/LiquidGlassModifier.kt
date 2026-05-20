@@ -14,7 +14,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
-import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
@@ -75,12 +75,14 @@ fun Modifier.liquidGlassBackground(
 
     this
         .graphicsLayer(renderEffect = composeEffect)
-        .drawWithContent {
+        .drawWithCache {
             shader.setFloatUniform("resolution", size.width, size.height)
-            shader.setFloatUniform("time", time)
             shader.setFloatUniform("waveFrequency", WAVE_FREQUENCY)
             shader.setFloatUniform("waveAmplitude", WAVE_AMPLITUDE)
             shader.setFloatUniform("vignetteBoost", VIGNETTE_BOOST)
-            drawContent()
+            onDrawWithContent {
+                shader.setFloatUniform("time", time)
+                drawContent()
+            }
         }
 }
