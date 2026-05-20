@@ -36,7 +36,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.BlurredEdgeTreatment
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -71,19 +74,16 @@ fun AuthScreen(
     var successMessage by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(false) }
     val authBackgroundGradient = Brush.verticalGradient(
-        colorStops = arrayOf(
-            0.0f to Color(0xFF81D4FA),
-            0.3f to Color(0xFF2196F3),
-            0.7f to Color(0xFF0D1117),
-            1.0f to Color.Black
-        )
+        0.0f to Color(0xFF4FC3F7),
+        0.4f to Color(0xFF1565C0),
+        1.0f to Color(0xFF000000)
     )
-    val authCardShape = RoundedCornerShape(20.dp)
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(authBackgroundGradient)
+            .blur(radius = 30.dp, edgeTreatment = BlurredEdgeTreatment.Unbounded)
             .padding(20.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -99,13 +99,23 @@ fun AuthScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(authCardShape)
-                    .liquidGlassBackground(imageResId = R.drawable.bg_default)
-                    .background(Color.White.copy(alpha = 0.1f))
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(Color.White.copy(alpha = 0.05f))
                     .border(
-                        1.dp,
-                        Color.White.copy(alpha = 0.2f),
-                        authCardShape
+                        width = 1.dp,
+                        brush = Brush.linearGradient(
+                            colors = listOf(
+                                Color.White.copy(alpha = 0.4f),
+                                Color.White.copy(alpha = 0.0f)
+                            )
+                        ),
+                        shape = RoundedCornerShape(24.dp)
+                    )
+                    .shadow(
+                        elevation = 15.dp,
+                        shape = RoundedCornerShape(24.dp),
+                        ambientColor = Color.Blue,
+                        spotColor = Color.Cyan
                     )
                     .padding(24.dp)
             ) {

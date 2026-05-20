@@ -345,7 +345,7 @@ fun MainShellScreen(
             ModalDrawerSheet(
                 modifier = Modifier
                     .width(250.dp)
-                    .liquidGlassBackground(R.drawable.bg_default),
+                    .liquidGlassBackground(),
                 drawerContainerColor = IdeColors.BgSurface,
                 drawerContentColor = IdeColors.TextPrimary
             ) {
@@ -513,7 +513,6 @@ fun MainShellScreen(
                             .weight(rightPaneWeight)
                             .fillMaxHeight()
                             .liquidGlassBackground(
-                                imageResId = R.drawable.bg_default,
                                 fallbackColor = IdeColors.BgSurface
                             )
                     ) {
