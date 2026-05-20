@@ -99,25 +99,19 @@ fun AuthScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color.Transparent, authCardShape)
+                    .clip(authCardShape)
+                    .liquidGlassBackground(imageResId = R.drawable.bg_default)
+                    .background(Color.White.copy(alpha = 0.1f))
                     .border(
                         1.dp,
                         Color.White.copy(alpha = 0.2f),
                         authCardShape
                     )
+                    .padding(24.dp)
             ) {
-                Surface(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clip(authCardShape)
-                        .liquidGlassBackground(imageResId = R.drawable.bg_default),
-                    color = Color.Transparent
-                ) {}
-
                 Column(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(20.dp),
+                        .fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Text(
