@@ -150,21 +150,9 @@ fun Modifier.liquidGlassBackground(
     val shader = remember { RuntimeShader(LIQUID_GLASS_SHADER) }
     var pointerPosition by remember { mutableStateOf(Offset.Unspecified) }
 
-    val brush = remember(shader, pointerPosition, bitmap) {
+    val brush = remember(shader, bitmap, tileMode) {
         // Bind the image to the AGSL shader
         shader.setInputShader("image", BitmapShader(bitmap, tileMode, tileMode))
-
-        // Pass resolution (requires layout size, assuming you pass it or hardcode for now)
-        shader.setFloatUniform("resolution", bitmap.width.toFloat(), bitmap.height.toFloat())
-
-        // Update mouse coordinates
-        if (!pointerPosition.isUnspecified) {
-            shader.setFloatUniform("mouse", pointerPosition.x, pointerPosition.y)
-        } else {
-            // Default to center if untouched
-            shader.setFloatUniform("mouse", bitmap.width / 2f, bitmap.height / 2f)
-        }
-
         // Bridge the native shader to Compose
         ShaderBrush(shader)
     }
@@ -179,6 +167,13 @@ fun Modifier.liquidGlassBackground(
             }
         }
         .drawWithContent {
+            shader.setFloatUniform("resolution", size.width, size.height)
+            val resolvedMouse = if (!pointerPosition.isUnspecified) {
+                pointerPosition
+            } else {
+                Offset(size.width / 2f, size.height / 2f)
+            }
+            shader.setFloatUniform("mouse", resolvedMouse.x, resolvedMouse.y)
             drawRect(brush)
             drawContent()
         }

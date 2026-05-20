@@ -101,7 +101,7 @@ fun AuthScreen(
                     .fillMaxWidth()
                     .clip(authCardShape)
                     .liquidGlassBackground(imageResId = R.drawable.bg_default)
-                    .background(Color.White.copy(alpha = 0.1f), authCardShape)
+                    .background(Color.White.copy(alpha = 0.1f))
                     .border(
                         1.dp,
                         Color.White.copy(alpha = 0.2f),
