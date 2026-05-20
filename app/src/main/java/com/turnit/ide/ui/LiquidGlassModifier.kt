@@ -22,6 +22,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 private const val WAVE_FREQUENCY = 6.2831855f
 private const val WAVE_AMPLITUDE = 6.0f
 private const val VIGNETTE_BOOST = 0.08f
+private const val ANIMATION_DURATION_MS = 6000
 
 const val LIQUID_GLASS_SHADER = """
 uniform shader input;
@@ -60,7 +61,7 @@ fun Modifier.liquidGlassBackground(
         initialValue = 0f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 6000, easing = LinearEasing),
+            animation = tween(durationMillis = ANIMATION_DURATION_MS, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "liquid_glass_time"
