@@ -79,26 +79,28 @@ fun AuthScreen(
         1.0f to Color(0xFF000000)
     )
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(authBackgroundGradient)
-            .blur(radius = 30.dp, edgeTreatment = BlurredEdgeTreatment.Unbounded)
-            .padding(20.dp),
-        contentAlignment = Alignment.Center
-    ) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(authBackgroundGradient)
+                .blur(radius = 30.dp, edgeTreatment = BlurredEdgeTreatment.Unbounded)
+        )
+
         Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .widthIn(max = 520.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+                .fillMaxSize()
+                .padding(horizontal = 16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
         ) {
             AnimatedRgbLogo()
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .widthIn(max = 520.dp)
                     .clip(RoundedCornerShape(24.dp))
                     .background(Color.White.copy(alpha = 0.05f))
                     .border(
