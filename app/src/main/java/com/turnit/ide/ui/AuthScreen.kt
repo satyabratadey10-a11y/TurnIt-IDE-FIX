@@ -26,7 +26,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -362,6 +361,10 @@ private fun AnimatedRgbLogo() {
 private fun outlinedFieldColors() = OutlinedTextFieldDefaults.colors(
     focusedBorderColor = IdeColors.AccentBlue,
     unfocusedBorderColor = IdeColors.Border,
+    focusedContainerColor = Color.Transparent,
+    unfocusedContainerColor = Color.Transparent,
+    disabledContainerColor = Color.Transparent,
+    errorContainerColor = Color.Transparent,
     focusedTextColor = IdeColors.TextPrimary,
     unfocusedTextColor = IdeColors.TextPrimary,
     focusedLabelColor = IdeColors.AccentBlue,
