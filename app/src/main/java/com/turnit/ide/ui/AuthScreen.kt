@@ -79,254 +79,269 @@ fun AuthScreen(
         1.0f to Color(0xFF000000)
     )
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(authBackgroundGradient)
-            .blur(radius = 30.dp, edgeTreatment = BlurredEdgeTreatment.Unbounded)
-            .padding(20.dp),
-        contentAlignment = Alignment.Center
-    ) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(authBackgroundGradient)
+                .blur(radius = 30.dp, edgeTreatment = BlurredEdgeTreatment.Unbounded)
+        )
+
         Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .widthIn(max = 520.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+                .fillMaxSize()
+                .padding(horizontal = 16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
         ) {
-            AnimatedRgbLogo()
-            Spacer(modifier = Modifier.height(20.dp))
-
-            Box(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(Color.White.copy(alpha = 0.05f))
-                    .border(
-                        width = 1.dp,
-                        brush = Brush.linearGradient(
-                            colors = listOf(
-                                Color.White.copy(alpha = 0.4f),
-                                Color.White.copy(alpha = 0.0f)
-                            )
-                        ),
-                        shape = RoundedCornerShape(24.dp)
-                    )
-                    .shadow(
-                        elevation = 15.dp,
-                        shape = RoundedCornerShape(24.dp),
-                        ambientColor = Color.Blue,
-                        spotColor = Color.Cyan
-                    )
-                    .padding(24.dp)
+                    .widthIn(max = 520.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Column(
+                AnimatedRgbLogo()
+                Spacer(modifier = Modifier.height(20.dp))
+
+                Box(
                     modifier = Modifier
-                        .fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(Color.White.copy(alpha = 0.05f))
+                        .border(
+                            width = 1.dp,
+                            brush = Brush.linearGradient(
+                                colors = listOf(
+                                    Color.White.copy(alpha = 0.4f),
+                                    Color.White.copy(alpha = 0.0f)
+                                )
+                            ),
+                            shape = RoundedCornerShape(24.dp)
+                        )
+                        .shadow(
+                            elevation = 15.dp,
+                            shape = RoundedCornerShape(24.dp),
+                            ambientColor = Color.Blue,
+                            spotColor = Color.Cyan
+                        )
+                        .padding(24.dp)
                 ) {
-                    Text(
-                        text = "Cloud Sign In",
-                        color = IdeColors.TextPrimary,
-                        fontWeight = FontWeight.SemiBold
-                    )
-
-                    OutlinedTextField(
-                        value = email,
-                        onValueChange = {
-                            email = it
-                            emailError = null
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Email") },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = outlinedFieldColors()
-                    )
-
-                    if (!emailError.isNullOrBlank()) {
-                        Text(
-                            text = emailError.orEmpty(),
-                            color = Color.Red,
-                            fontSize = 12.sp
-                        )
-                    }
-
-                    OutlinedTextField(
-                        value = password,
-                        onValueChange = {
-                            password = it
-                            passwordError = null
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Password") },
-                        singleLine = true,
-                        visualTransformation = PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = outlinedFieldColors()
-                    )
-
-                    if (!passwordError.isNullOrBlank()) {
-                        Text(
-                            text = passwordError.orEmpty(),
-                            color = Color.Red,
-                            fontSize = 12.sp
-                        )
-                    }
-
-                    if (!successMessage.isNullOrBlank()) {
-                        Text(
-                            text = successMessage.orEmpty(),
-                            color = Color.Green,
-                            fontSize = 12.sp
-                        )
-                    }
-
-                    Button(
-                        onClick = {
-                            emailError = null
-                            passwordError = null
-                            successMessage = null
-                            if (email.isNotBlank() && password.isNotBlank()) {
-                                isLoading = true
-                                authManager.logIn(
-                                    email = email,
-                                    password = password,
-                                    onSuccess = {
-                                        isLoading = false
-                                        onAuthenticated()
-                                    },
-                                    onError = { exception ->
-                                        isLoading = false
-                                        val message = exception.localizedMessage
-                                            ?: "the password is incorrect or email does not exist"
-                                        if (message.contains("verify your email", ignoreCase = true)) {
-                                            emailError = message
-                                        } else {
-                                            passwordError = "the password is incorrect or email does not exist"
-                                        }
-                                    }
-                                )
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = !isLoading,
-                        colors = ButtonDefaults.buttonColors(containerColor = IdeColors.AccentBlue)
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Text(if (isLoading) "Logging In..." else "Log In")
-                    }
+                        Text(
+                            text = "Cloud Sign In",
+                            color = IdeColors.TextPrimary,
+                            fontWeight = FontWeight.SemiBold
+                        )
 
-                    Button(
-                        onClick = {
-                            emailError = null
-                            passwordError = null
-                            successMessage = null
-                            if (email.isNotBlank() && password.isNotBlank()) {
-                                isLoading = true
-                                authManager.signUp(
-                                    email = email,
-                                    password = password,
-                                    onSuccess = { message ->
-                                        isLoading = false
-                                        emailError = null
-                                        successMessage = message
-                                    },
-                                    onError = { exception ->
-                                        isLoading = false
-                                        if (exception is FirebaseAuthUserCollisionException) {
-                                            emailError = "these email is already existing,you use another email"
-                                        } else {
-                                            emailError = exception.localizedMessage
-                                        }
-                                    }
-                                )
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = !isLoading,
-                        colors = ButtonDefaults.buttonColors(containerColor = IdeColors.AccentGreen)
-                    ) {
-                        Text("Sign Up")
-                    }
+                        OutlinedTextField(
+                            value = email,
+                            onValueChange = {
+                                email = it
+                                emailError = null
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("Email") },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = outlinedFieldColors()
+                        )
 
-                    Button(
-                        onClick = {
-                            scope.launch {
+                        if (!emailError.isNullOrBlank()) {
+                            Text(
+                                text = emailError.orEmpty(),
+                                color = Color.Red,
+                                fontSize = 12.sp
+                            )
+                        }
+
+                        OutlinedTextField(
+                            value = password,
+                            onValueChange = {
+                                password = it
+                                passwordError = null
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("Password") },
+                            singleLine = true,
+                            visualTransformation = PasswordVisualTransformation(),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = outlinedFieldColors()
+                        )
+
+                        if (!passwordError.isNullOrBlank()) {
+                            Text(
+                                text = passwordError.orEmpty(),
+                                color = Color.Red,
+                                fontSize = 12.sp
+                            )
+                        }
+
+                        if (!successMessage.isNullOrBlank()) {
+                            Text(
+                                text = successMessage.orEmpty(),
+                                color = Color.Green,
+                                fontSize = 12.sp
+                            )
+                        }
+
+                        Button(
+                            onClick = {
                                 emailError = null
                                 passwordError = null
                                 successMessage = null
-                                isLoading = true
-
-                                val resourceId = context.resources.getIdentifier(
-                                    "default_web_client_id",
-                                    "string",
-                                    context.packageName
-                                )
-                                val webClientId = if (resourceId != 0) {
-                                    context.getString(resourceId)
-                                } else {
-                                    ""
-                                }
-
-                                if (webClientId.isBlank()) {
-                                    isLoading = false
-                                    return@launch
-                                }
-
-                                val credentialManager = CredentialManager.create(context)
-                                val googleIdOption = GetGoogleIdOption.Builder()
-                                    .setFilterByAuthorizedAccounts(false)
-                                    .setServerClientId(webClientId)
-                                    .build()
-                                val request = GetCredentialRequest.Builder()
-                                    .addCredentialOption(googleIdOption)
-                                    .build()
-
-                                try {
-                                    val result = credentialManager.getCredential(context, request)
-                                    val credential = result.credential
-                                    if (credential is CustomCredential &&
-                                        credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
-                                    ) {
-                                        val googleCredential = GoogleIdTokenCredential.createFrom(credential.data)
-                                        authManager.signInWithGoogleToken(
-                                            idToken = googleCredential.idToken,
-                                            onSuccess = {
-                                                isLoading = false
-                                                onAuthenticated()
-                                            },
-                                            onError = { exception ->
-                                                isLoading = false
-                                                passwordError = exception.message ?: "Google sign-in failed"
+                                if (email.isNotBlank() && password.isNotBlank()) {
+                                    isLoading = true
+                                    authManager.logIn(
+                                        email = email,
+                                        password = password,
+                                        onSuccess = {
+                                            isLoading = false
+                                            onAuthenticated()
+                                        },
+                                        onError = { exception ->
+                                            isLoading = false
+                                            val message = exception.localizedMessage
+                                                ?: "the password is incorrect or email does not exist"
+                                            if (message.contains("verify your email", ignoreCase = true)) {
+                                                emailError = message
+                                            } else {
+                                                passwordError =
+                                                    "the password is incorrect or email does not exist"
                                             }
-                                        )
-                                    } else {
-                                        isLoading = false
-                                    }
-                                } catch (exception: GetCredentialException) {
-                                    isLoading = false
-                                } catch (exception: Exception) {
-                                    isLoading = false
-                                    passwordError = exception.message ?: "Google sign-in failed"
+                                        }
+                                    )
                                 }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = !isLoading,
+                            colors = ButtonDefaults.buttonColors(containerColor = IdeColors.AccentBlue)
+                        ) {
+                            Text(if (isLoading) "Logging In..." else "Log In")
+                        }
+
+                        Button(
+                            onClick = {
+                                emailError = null
+                                passwordError = null
+                                successMessage = null
+                                if (email.isNotBlank() && password.isNotBlank()) {
+                                    isLoading = true
+                                    authManager.signUp(
+                                        email = email,
+                                        password = password,
+                                        onSuccess = { message ->
+                                            isLoading = false
+                                            emailError = null
+                                            successMessage = message
+                                        },
+                                        onError = { exception ->
+                                            isLoading = false
+                                            if (exception is FirebaseAuthUserCollisionException) {
+                                                emailError =
+                                                    "these email is already existing,you use another email"
+                                            } else {
+                                                emailError = exception.localizedMessage
+                                            }
+                                        }
+                                    )
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = !isLoading,
+                            colors = ButtonDefaults.buttonColors(containerColor = IdeColors.AccentGreen)
+                        ) {
+                            Text("Sign Up")
+                        }
+
+                        Button(
+                            onClick = {
+                                scope.launch {
+                                    emailError = null
+                                    passwordError = null
+                                    successMessage = null
+                                    isLoading = true
+
+                                    val resourceId = context.resources.getIdentifier(
+                                        "default_web_client_id",
+                                        "string",
+                                        context.packageName
+                                    )
+                                    val webClientId = if (resourceId != 0) {
+                                        context.getString(resourceId)
+                                    } else {
+                                        ""
+                                    }
+
+                                    if (webClientId.isBlank()) {
+                                        isLoading = false
+                                        return@launch
+                                    }
+
+                                    val credentialManager = CredentialManager.create(context)
+                                    val googleIdOption = GetGoogleIdOption.Builder()
+                                        .setFilterByAuthorizedAccounts(false)
+                                        .setServerClientId(webClientId)
+                                        .build()
+                                    val request = GetCredentialRequest.Builder()
+                                        .addCredentialOption(googleIdOption)
+                                        .build()
+
+                                    try {
+                                        val result =
+                                            credentialManager.getCredential(context, request)
+                                        val credential = result.credential
+                                        if (credential is CustomCredential &&
+                                            credential.type ==
+                                            GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
+                                        ) {
+                                            val googleCredential =
+                                                GoogleIdTokenCredential.createFrom(credential.data)
+                                            authManager.signInWithGoogleToken(
+                                                idToken = googleCredential.idToken,
+                                                onSuccess = {
+                                                    isLoading = false
+                                                    onAuthenticated()
+                                                },
+                                                onError = { exception ->
+                                                    isLoading = false
+                                                    passwordError =
+                                                        exception.message ?: "Google sign-in failed"
+                                                }
+                                            )
+                                        } else {
+                                            isLoading = false
+                                        }
+                                    } catch (exception: GetCredentialException) {
+                                        isLoading = false
+                                    } catch (exception: Exception) {
+                                        isLoading = false
+                                        passwordError =
+                                            exception.message ?: "Google sign-in failed"
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = !isLoading,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color.White,
+                                contentColor = Color.Black
+                            ),
+                            border = BorderStroke(1.dp, Color.LightGray)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Image(
+                                    painter = painterResource(R.drawable.ic_google_logo),
+                                    contentDescription = "Google logo"
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Text("Sign in with Google")
                             }
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = !isLoading,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color.White,
-                            contentColor = Color.Black
-                        ),
-                        border = BorderStroke(1.dp, Color.LightGray)
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Image(
-                                painter = painterResource(R.drawable.ic_google_logo),
-                                contentDescription = "Google logo"
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Text("Sign in with Google")
                         }
                     }
                 }
