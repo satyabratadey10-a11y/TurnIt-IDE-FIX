@@ -103,10 +103,10 @@ fun AuthScreen(
                     .clip(RoundedCornerShape(24.dp))
                     .background(Color.White.copy(alpha = 0.05f))
                     .border(
-                        width = 1.dp,
+                        width = 3.dp,
                         brush = Brush.linearGradient(
                             colors = listOf(
-                                Color.White.copy(alpha = 0.4f),
+                                Color.White.copy(alpha = 0.8f),
                                 Color.White.copy(alpha = 0.0f)
                             )
                         ),
