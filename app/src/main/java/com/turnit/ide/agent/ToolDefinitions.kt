@@ -69,6 +69,20 @@ val coreTools: List<IdeTool> = listOf(
             ),
             "required" to listOf("url")
         )
+    ),
+    IdeTool(
+        name = "reasoning_scratchpad",
+        description = "Use this tool to think step-by-step or output reasoning before taking a complex action. This helps structure your thoughts.",
+        parameters = mapOf(
+            "type" to "object",
+            "properties" to mapOf(
+                "thought_process" to mapOf(
+                    "type" to "string",
+                    "description" to "Your detailed reasoning."
+                )
+            ),
+            "required" to listOf("thought_process")
+        )
     )
 )
 

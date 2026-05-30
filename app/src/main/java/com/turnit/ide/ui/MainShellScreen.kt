@@ -343,6 +343,56 @@ fun MainShellScreen(
         if (prompt.isBlank()) {
             return@send
         }
+        val action = pendingAction
+        if (action != null) {
+            val decision = prompt.firstOrNull()?.lowercaseChar()
+            if (decision == 'y' || decision == 'n') {
+                val feedback = prompt.drop(1).trim()
+                chatMessages.add(ChatMessage(role = "user", content = prompt))
+                chatInput = ""
+                pendingAction = null
+                val pendingIndex = chatMessages.indexOfFirst { it.id == action.messageId }
+                if (pendingIndex >= 0) {
+                    val message = chatMessages[pendingIndex]
+                    chatMessages[pendingIndex] = message.copy(isPendingAction = false)
+                }
+                scope.launch {
+                    if (decision == 'y') {
+                        val command = action.command.trim()
+                        val output = if (command.isBlank()) {
+                            "Missing command argument."
+                        } else {
+                            synchronized(commandOutputLock) {
+                                commandOutputBuffer.setLength(0)
+                            }
+                            isCapturingCommandOutput = true
+                            val submitted = runCommand(command)
+                            if (!submitted) {
+                                isCapturingCommandOutput = false
+                                "Command could not be executed."
+                            } else {
+                                delay(TERMINAL_EXECUTION_RESTORE_DELAY_MS)
+                                isCapturingCommandOutput = false
+                                synchronized(commandOutputLock) { commandOutputBuffer.toString() }.trim()
+                            }
+                        }
+                        action.deferred.complete(
+                            JSONObject()
+                                .put("status", "approved")
+                                .put("feedback", feedback)
+                                .put("output", output)
+                        )
+                    } else {
+                        action.deferred.complete(
+                            JSONObject()
+                                .put("status", "denied")
+                                .put("feedback", feedback)
+                        )
+                    }
+                }
+                return@send
+            }
+        }
         val modelSnapshot = selectedModel
         val chatHistorySnapshot = chatMessages.toList()
         val isGeminiModel = modelSnapshot.apiUrl.contains("generativelanguage.googleapis.com", ignoreCase = true) ||
