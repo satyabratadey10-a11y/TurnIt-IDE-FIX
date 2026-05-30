@@ -1337,7 +1337,7 @@ private fun extractGeminiArg(args: Map<String, Any?>, key: String): String? {
 }
 
 private suspend fun performWebSearch(query: String): JSONObject {
-    val encodedQuery = URLEncoder.encode(query, "UTF-8")
+    val encodedQuery = URLEncoder.encode(query, Charsets.UTF_8.name())
     val searchUrl = "https://www.google.com/search?q=$encodedQuery&hl=en&num=5"
     return fetchWebpageContent(searchUrl).also { result ->
         if (result.optString("status") == "success") {
@@ -1382,7 +1382,8 @@ private suspend fun fetchWebpageContent(url: String): JSONObject {
 private fun isHttpUrl(url: String): Boolean {
     return try {
         val parsed = Uri.parse(url)
-        parsed.scheme.equals("http", ignoreCase = true) || parsed.scheme.equals("https", ignoreCase = true)
+        parsed.scheme?.equals("http", ignoreCase = true) == true ||
+            parsed.scheme?.equals("https", ignoreCase = true) == true
     } catch (_: Exception) {
         false
     }
