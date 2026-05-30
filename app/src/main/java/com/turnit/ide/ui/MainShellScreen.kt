@@ -209,7 +209,9 @@ fun MainShellScreen(
         shellEngine.setOutputCallback { output ->
             consoleLogs.add(output)
             if (isCapturingCommandOutput) {
-                commandOutputBuffer.append(output).append("\n")
+                synchronized(commandOutputLock) {
+                    commandOutputBuffer.append(output).append("\n")
+                }
             }
         }
         startShellSession()
@@ -334,6 +336,7 @@ fun MainShellScreen(
     var pendingAction by remember { mutableStateOf<PendingAction?>(null) }
     var isCapturingCommandOutput by remember { mutableStateOf(false) }
     val commandOutputBuffer = remember { StringBuilder() }
+    val commandOutputLock = remember { Any() }
     var chatInput by remember { mutableStateOf("") }
     val sendChatPrompt = send@{
         val prompt = chatInput.trim()
@@ -459,7 +462,9 @@ fun MainShellScreen(
             val result = if (command.isBlank()) {
                 JSONObject().put("status", "error").put("message", "Missing command argument.")
             } else {
-                commandOutputBuffer.setLength(0)
+                synchronized(commandOutputLock) {
+                    commandOutputBuffer.setLength(0)
+                }
                 isCapturingCommandOutput = true
                 val submitted = runCommand(command)
                 if (!submitted) {
@@ -468,10 +473,11 @@ fun MainShellScreen(
                 } else {
                     delay(TERMINAL_EXECUTION_RESTORE_DELAY_MS)
                     isCapturingCommandOutput = false
+                    val outputSnapshot = synchronized(commandOutputLock) { commandOutputBuffer.toString() }
                     JSONObject()
                         .put("status", "success")
                         .put("command", command)
-                        .put("output", commandOutputBuffer.toString().trim())
+                        .put("output", outputSnapshot.trim())
                 }
             }
             action.deferred.complete(result)

@@ -7,12 +7,12 @@ sealed class FirewallResult {
 
 object CommandFirewall {
     private val denylist: List<Pair<Regex, String>> = listOf(
-        Regex("""\brm\s+-rf\s+/\b""", RegexOption.IGNORE_CASE) to "rm -rf / is destructive",
-        Regex("""\brm\s+-rf\s+\*""", RegexOption.IGNORE_CASE) to "rm -rf * is destructive",
-        Regex("""\bmkfs\b""", RegexOption.IGNORE_CASE) to "mkfs can destroy filesystems",
-        Regex("""\bdd\b""", RegexOption.IGNORE_CASE) to "dd can overwrite disks",
-        Regex("""\bsu\b""", RegexOption.IGNORE_CASE) to "su is not allowed",
-        Regex("""\bchmod\s+-R\s+777\b""", RegexOption.IGNORE_CASE) to "chmod -R 777 is unsafe"
+        Regex("""(?:^|[;&|])\s*rm\s+-[rRfF]+\s+/(?:\s|$|\*)""", RegexOption.IGNORE_CASE) to "rm -rf / is destructive",
+        Regex("""(?:^|[;&|])\s*rm\s+-[rRfF]+\s+\*""", RegexOption.IGNORE_CASE) to "rm -rf * is destructive",
+        Regex("""(?:^|[;&|])\s*mkfs\b""", RegexOption.IGNORE_CASE) to "mkfs can destroy filesystems",
+        Regex("""(?:^|[;&|])\s*dd\b""", RegexOption.IGNORE_CASE) to "dd can overwrite disks",
+        Regex("""(?:^|[;&|])\s*su\b""", RegexOption.IGNORE_CASE) to "su is not allowed",
+        Regex("""(?:^|[;&|])\s*chmod\s+-R\s+777\b""", RegexOption.IGNORE_CASE) to "chmod -R 777 is unsafe"
     )
 
     fun analyzeCommand(command: String): FirewallResult {
