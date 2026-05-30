@@ -97,6 +97,7 @@ import com.turnit.ide.ai.AiChatClient
 import com.turnit.ide.ai.ChatMessage
 import com.turnit.ide.ai.GeminiAgent
 import com.turnit.ide.engine.ShellEngine
+import com.turnit.ide.security.CommandFirewall
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CompletableDeferred
@@ -366,31 +367,42 @@ fun MainShellScreen(
                                 val functionCall = geminiResponse.functionCalls.first()
                                 if (functionCall.name == "execute_shell_command") {
                                     val command = extractGeminiArg(functionCall.args, "command")?.trim().orEmpty()
-                                    val deferred = CompletableDeferred<JSONObject>()
-                                    val pendingMessage = ChatMessage(
-                                        role = "assistant",
-                                        content = "Command approval required.",
-                                        isPendingAction = true,
-                                        pendingCommand = command
-                                    )
-                                    chatMessages.add(pendingMessage)
-                                    pendingAction = PendingAction(
-                                        messageId = pendingMessage.id,
-                                        command = command,
-                                        deferred = deferred
-                                    )
-                                    isAgentThinking = false
-                                    val loadingBubbleIndex = chatMessages.indexOfLast { it.id == loadingBubbleId }
-                                    if (loadingBubbleIndex >= 0) {
-                                        chatMessages.removeAt(loadingBubbleIndex)
-                                    }
-                                    val toolResult = deferred.await()
-                                    isAgentThinking = true
-                                    geminiResponse = chat.sendMessage(
-                                        content("function") {
-                                            part(FunctionResponsePart(functionCall.name, toolResult))
+                                    val firewallResult = CommandFirewall.analyzeCommand(command)
+                                    if (firewallResult is com.turnit.ide.security.FirewallResult.Blocked) {
+                                        val toolResult = JSONObject()
+                                            .put("error", "SYSTEM FIREWALL BLOCKED COMMAND: ${firewallResult.reason}")
+                                        geminiResponse = chat.sendMessage(
+                                            content("function") {
+                                                part(FunctionResponsePart(functionCall.name, toolResult))
+                                            }
+                                        )
+                                    } else {
+                                        val deferred = CompletableDeferred<JSONObject>()
+                                        val pendingMessage = ChatMessage(
+                                            role = "assistant",
+                                            content = "Command approval required.",
+                                            isPendingAction = true,
+                                            pendingCommand = command
+                                        )
+                                        chatMessages.add(pendingMessage)
+                                        pendingAction = PendingAction(
+                                            messageId = pendingMessage.id,
+                                            command = command,
+                                            deferred = deferred
+                                        )
+                                        isAgentThinking = false
+                                        val loadingBubbleIndex = chatMessages.indexOfLast { it.id == loadingBubbleId }
+                                        if (loadingBubbleIndex >= 0) {
+                                            chatMessages.removeAt(loadingBubbleIndex)
                                         }
-                                    )
+                                        val toolResult = deferred.await()
+                                        isAgentThinking = true
+                                        geminiResponse = chat.sendMessage(
+                                            content("function") {
+                                                part(FunctionResponsePart(functionCall.name, toolResult))
+                                            }
+                                        )
+                                    }
                                 } else {
                                     val functionResult = handleGeminiFunctionCall(
                                         functionCall = functionCall,
