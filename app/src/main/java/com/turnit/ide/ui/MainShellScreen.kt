@@ -89,16 +89,20 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.google.ai.client.generativeai.type.FunctionResponsePart
+import com.google.ai.client.generativeai.type.content
 import com.turnit.ide.R
 import com.turnit.ide.ai.AiModel
 import com.turnit.ide.ai.AiChatClient
 import com.turnit.ide.ai.ChatMessage
+import com.turnit.ide.ai.GeminiAgent
 import com.turnit.ide.engine.ShellEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 import java.io.File
 
 enum class IdePane { TERMINAL, EDITOR, FILE_TREE }
@@ -314,6 +318,8 @@ fun MainShellScreen(
         }
         val modelSnapshot = selectedModel
         val chatHistorySnapshot = chatMessages.toList()
+        val isGeminiModel = modelSnapshot.apiUrl.contains("generativelanguage.googleapis.com", ignoreCase = true) ||
+            modelSnapshot.modelId.startsWith("gemini", ignoreCase = true)
 
         chatMessages.add(ChatMessage(role = "user", content = prompt))
         chatInput = ""
@@ -324,11 +330,39 @@ fun MainShellScreen(
 
         scope.launch {
             try {
-                val response = AiChatClient.sendMessage(
-                    model = modelSnapshot,
-                    chatHistory = chatHistorySnapshot,
-                    newPrompt = prompt
-                )
+                val response = try {
+                    if (isGeminiModel) {
+                        if (modelSnapshot.apiKey.isBlank()) {
+                            "Error: Gemini API key is required for tool-enabled chat."
+                        } else {
+                            val geminiAgent = GeminiAgent(modelSnapshot.modelId, modelSnapshot.apiKey)
+                            val chat = geminiAgent.startChat(chatHistorySnapshot)
+                            var geminiResponse = chat.sendMessage(prompt)
+                            while (geminiResponse.functionCalls.isNotEmpty()) {
+                                val functionCall = geminiResponse.functionCalls.first()
+                                val functionResult = handleGeminiFunctionCall(
+                                    functionCall = functionCall,
+                                    workspaceRoot = context.filesDir,
+                                    runCommand = runCommand
+                                )
+                                geminiResponse = chat.sendMessage(
+                                    content("function") {
+                                        part(FunctionResponsePart(functionCall.name, functionResult))
+                                    }
+                                )
+                            }
+                            geminiResponse.text ?: "Error: Empty response body"
+                        }
+                    } else {
+                        AiChatClient.sendMessage(
+                            model = modelSnapshot,
+                            chatHistory = chatHistorySnapshot,
+                            newPrompt = prompt
+                        )
+                    }
+                } catch (e: Exception) {
+                    "Error: ${e.message ?: "Unable to contact AI service"}"
+                }
                 chatMessages.add(ChatMessage(role = "assistant", content = response))
             } finally {
                 val loadingBubbleIndex = chatMessages.indexOfLast { it.id == loadingBubbleId }
@@ -1023,6 +1057,80 @@ private fun buildFileTreeEntries(root: File): List<FileTreeEntry> {
     }
     visit(root, 0)
     return items
+}
+
+private suspend fun handleGeminiFunctionCall(
+    functionCall: com.google.ai.client.generativeai.type.FunctionCall,
+    workspaceRoot: File,
+    runCommand: (String) -> Boolean
+): JSONObject {
+    val args = functionCall.args
+    return when (functionCall.name) {
+        "create_or_update_file" -> {
+            val path = extractGeminiArg(args, "path")?.trim().orEmpty()
+            val content = extractGeminiArg(args, "content").orEmpty()
+            if (path.isBlank()) {
+                JSONObject().put("status", "error").put("message", "Missing path argument.")
+            } else {
+                val targetFile = resolveWorkspaceFile(workspaceRoot, path)
+                if (targetFile == null) {
+                    JSONObject().put("status", "error").put("message", "Invalid path outside workspace.")
+                } else {
+                    try {
+                        withContext(Dispatchers.IO) {
+                            targetFile.parentFile?.mkdirs()
+                            targetFile.writeText(content)
+                        }
+                        JSONObject().put("status", "success").put("path", path)
+                    } catch (e: Exception) {
+                        JSONObject().put("status", "error").put("message", e.message ?: "Write failed.")
+                    }
+                }
+            }
+        }
+        "execute_shell_command" -> {
+            val command = extractGeminiArg(args, "command")?.trim().orEmpty()
+            if (command.isBlank()) {
+                JSONObject().put("status", "error").put("message", "Missing command argument.")
+            } else {
+                val submitted = runCommand(command)
+                if (submitted) {
+                    JSONObject().put("status", "success").put("command", command)
+                } else {
+                    JSONObject().put("status", "error").put("message", "Command could not be executed.")
+                }
+            }
+        }
+        else -> JSONObject().put("status", "error").put("message", "Unknown tool ${functionCall.name}.")
+    }
+}
+
+private fun resolveWorkspaceFile(workspaceRoot: File, relativePath: String): File? {
+    if (relativePath.isBlank() || File(relativePath).isAbsolute) {
+        return null
+    }
+    return try {
+        val canonicalRoot = workspaceRoot.canonicalFile
+        val canonicalTarget = File(canonicalRoot, relativePath).canonicalFile
+        val rootPath = canonicalRoot.path.trimEnd(File.separatorChar) + File.separator
+        if (!canonicalTarget.path.startsWith(rootPath)) {
+            null
+        } else {
+            canonicalTarget
+        }
+    } catch (_: Exception) {
+        null
+    }
+}
+
+private fun extractGeminiArg(args: Map<String, Any?>, key: String): String? {
+    val raw = args[key] ?: return null
+    val value = raw.toString().trim()
+    return if (value.length >= 2 && value.startsWith("\"") && value.endsWith("\"")) {
+        value.substring(1, value.length - 1)
+    } else {
+        value
+    }
 }
 
 @Composable
