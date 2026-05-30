@@ -10,7 +10,9 @@ private object ChatMessageIdGenerator {
 data class ChatMessage(
     val role: String,
     val content: String,
-    val id: Long = ChatMessageIdGenerator.next()
+    val id: Long = ChatMessageIdGenerator.next(),
+    val isPendingAction: Boolean = false,
+    val pendingCommand: String? = null
 )
 
 data class AiModel(

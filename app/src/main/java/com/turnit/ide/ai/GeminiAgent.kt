@@ -17,7 +17,7 @@ class GeminiAgent(
             functionDeclarations = listOf(
                 FunctionDeclaration(
                     name = "create_or_update_file",
-                    description = "Creates a new file or overwrites an existing file with complete code.",
+                    description = "Creates a new file or overwrites an existing file with complete code, replacing any previous contents.",
                     parameters = listOf(
                         Schema(
                             name = "path",
@@ -43,6 +43,30 @@ class GeminiAgent(
                         )
                     ),
                     requiredParameters = listOf("command")
+                ),
+                FunctionDeclaration(
+                    name = "google_search",
+                    description = "Searches the web for up-to-date information, documentation, or code solutions.",
+                    parameters = listOf(
+                        Schema(
+                            name = "query",
+                            description = "Search query text.",
+                            type = FunctionType.STRING
+                        )
+                    ),
+                    requiredParameters = listOf("query")
+                ),
+                FunctionDeclaration(
+                    name = "fetch_webpage",
+                    description = "Fetches the raw text content of a specific URL.",
+                    parameters = listOf(
+                        Schema(
+                            name = "url",
+                            description = "The URL to fetch.",
+                            type = FunctionType.STRING
+                        )
+                    ),
+                    requiredParameters = listOf("url")
                 )
             )
         )
