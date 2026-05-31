@@ -4,9 +4,9 @@ import com.google.ai.client.generativeai.GenerativeModel
 import com.google.ai.client.generativeai.type.FunctionDeclaration
 import com.google.ai.client.generativeai.type.FunctionType
 import com.google.ai.client.generativeai.type.Schema
+import com.google.ai.client.generativeai.type.TextPart
 import com.google.ai.client.generativeai.type.Tool
 import com.google.ai.client.generativeai.type.content
-import com.google.ai.client.generativeai.type.text
 
 class GeminiAgent(
     modelName: String,
@@ -81,7 +81,7 @@ class GeminiAgent(
     fun startChat(history: List<ChatMessage>) = model.startChat(
         history = history.map { message ->
             val role = if (message.role == "assistant") "model" else message.role
-            content(role) { text(message.content) }
+            content(role) { part(TextPart(message.content)) }
         }
     )
 }
