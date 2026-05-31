@@ -455,7 +455,7 @@ fun MainShellScreen(
                                             content = "[Firewall] Agent loop limit exceeded (5+ consecutive actions). Execution halted to prevent hallucination runaway."
                                         )
                                     )
-                                    break
+                                    return@launch
                                 }
                                 val functionCall = geminiResponse.functionCalls.first()
                                 if (functionCall.name == "execute_shell_command") {
@@ -532,9 +532,7 @@ fun MainShellScreen(
                 if (loadingBubbleIndex >= 0) {
                     chatMessages.removeAt(loadingBubbleIndex)
                 }
-                if (currentGenerationJob?.isActive != true) {
-                    currentGenerationJob = null
-                }
+                currentGenerationJob = null
             }
         }
     }
