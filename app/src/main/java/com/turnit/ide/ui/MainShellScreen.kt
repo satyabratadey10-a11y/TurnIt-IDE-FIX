@@ -367,7 +367,6 @@ fun MainShellScreen(
                 content = "[System] Generation forcefully aborted by user."
             )
         )
-        Unit
     }
     val sendChatPrompt = send@{
         val prompt = chatInput.trim()
