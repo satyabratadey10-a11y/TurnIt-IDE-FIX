@@ -90,8 +90,10 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.google.ai.client.generativeai.type.FunctionCall
 import com.google.ai.client.generativeai.type.FunctionResponsePart
 import com.google.ai.client.generativeai.type.content
+import com.google.ai.client.generativeai.type.text
 import com.turnit.ide.R
 import com.turnit.ide.ai.AiModel
 import com.turnit.ide.ai.AiChatClient
@@ -176,6 +178,9 @@ fun MainShellScreen(
     var activeJob by remember { mutableStateOf<Job?>(null) }
     var isRunning by remember { mutableStateOf(false) }
     var hasShellStarted by remember { mutableStateOf(false) }
+    var isCapturingCommandOutput by remember { mutableStateOf(false) }
+    val commandOutputBuffer = remember { StringBuilder() }
+    val commandOutputLock = remember { Any() }
 
     val testCompileCommand = "echo 'Testing Compilers...'; gcc --version; javac -version; pwd; ls -la"
     val startShellSession = {
@@ -341,11 +346,8 @@ fun MainShellScreen(
     var pendingAction by remember { mutableStateOf<PendingAction?>(null) }
     var currentGenerationJob by remember { mutableStateOf<Job?>(null) }
     var consecutiveToolCalls by remember { mutableStateOf(0) }
-    var isCapturingCommandOutput by remember { mutableStateOf(false) }
-    val commandOutputBuffer = remember { StringBuilder() }
-    val commandOutputLock = remember { Any() }
     var chatInput by remember { mutableStateOf("") }
-    val stopGeneration = {
+    val stopGeneration: () -> Unit = {
         val action = pendingAction
         action?.deferred?.cancel()
         currentGenerationJob?.cancel()
@@ -547,48 +549,46 @@ fun MainShellScreen(
 
     val handleApproveAction: (ChatMessage) -> Unit = { message ->
         val action = pendingAction
-        if (action == null || action.messageId != message.id) {
-            return@handleApproveAction
-        }
-        pendingAction = null
-        resolvePendingAction(message.id)
-        scope.launch {
-            val command = action.command.trim()
-            val result = if (command.isBlank()) {
-                JSONObject().put("status", "error").put("message", "Missing command argument.")
-            } else {
-                synchronized(commandOutputLock) {
-                    commandOutputBuffer.setLength(0)
-                }
-                isCapturingCommandOutput = true
-                val submitted = runCommand(command)
-                if (!submitted) {
-                    isCapturingCommandOutput = false
-                    JSONObject().put("status", "error").put("message", "Command could not be executed.")
+        if (action != null && action.messageId == message.id) {
+            pendingAction = null
+            resolvePendingAction(message.id)
+            scope.launch {
+                val command = action.command.trim()
+                val result = if (command.isBlank()) {
+                    JSONObject().put("status", "error").put("message", "Missing command argument.")
                 } else {
-                    delay(TERMINAL_EXECUTION_RESTORE_DELAY_MS)
-                    isCapturingCommandOutput = false
-                    val outputSnapshot = synchronized(commandOutputLock) { commandOutputBuffer.toString() }
-                    JSONObject()
-                        .put("status", "success")
-                        .put("command", command)
-                        .put("output", outputSnapshot.trim())
+                    synchronized(commandOutputLock) {
+                        commandOutputBuffer.setLength(0)
+                    }
+                    isCapturingCommandOutput = true
+                    val submitted = runCommand(command)
+                    if (!submitted) {
+                        isCapturingCommandOutput = false
+                        JSONObject().put("status", "error").put("message", "Command could not be executed.")
+                    } else {
+                        delay(TERMINAL_EXECUTION_RESTORE_DELAY_MS)
+                        isCapturingCommandOutput = false
+                        val outputSnapshot = synchronized(commandOutputLock) { commandOutputBuffer.toString() }
+                        JSONObject()
+                            .put("status", "success")
+                            .put("command", command)
+                            .put("output", outputSnapshot.trim())
+                    }
                 }
+                action.deferred.complete(result)
             }
-            action.deferred.complete(result)
         }
     }
 
     val handleDenyAction: (ChatMessage) -> Unit = { message ->
         val action = pendingAction
-        if (action == null || action.messageId != message.id) {
-            return@handleDenyAction
+        if (action != null && action.messageId == message.id) {
+            pendingAction = null
+            resolvePendingAction(message.id)
+            action.deferred.complete(
+                JSONObject().put("error", "User denied permission to run this command")
+            )
         }
-        pendingAction = null
-        resolvePendingAction(message.id)
-        action.deferred.complete(
-            JSONObject().put("error", "User denied permission to run this command")
-        )
     }
 
     ModalNavigationDrawer(
@@ -1407,7 +1407,7 @@ private fun buildFileTreeEntries(root: File): List<FileTreeEntry> {
 }
 
 private suspend fun handleGeminiFunctionCall(
-    functionCall: com.google.ai.client.generativeai.type.FunctionCall,
+    functionCall: FunctionCall,
     workspaceRoot: File,
     runCommand: (String) -> Boolean
 ): JSONObject {
