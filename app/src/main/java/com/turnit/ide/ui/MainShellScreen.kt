@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PostAdd
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -89,17 +90,27 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.google.ai.client.generativeai.type.FunctionResponsePart
+import com.google.ai.client.generativeai.type.content
 import com.turnit.ide.R
 import com.turnit.ide.ai.AiModel
 import com.turnit.ide.ai.AiChatClient
 import com.turnit.ide.ai.ChatMessage
+import com.turnit.ide.ai.GeminiAgent
 import com.turnit.ide.engine.ShellEngine
+import com.turnit.ide.security.CommandFirewall
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import org.json.JSONObject
 import java.io.File
+import java.net.URLEncoder
 
 enum class IdePane { TERMINAL, EDITOR, FILE_TREE }
 
@@ -110,9 +121,12 @@ private const val CHAT_SPLIT_MAX_WEIGHT = 0.85f
 private val CHAT_SPLITTER_WIDTH = 8.dp
 private val CHAT_SPLITTER_COLOR = IdeColors.Border
 private val CHAT_BUBBLE_MAX_WIDTH = 280.dp
-private val CHAT_USER_BUBBLE_COLOR = Color(0xFF1F2937)
-private val CHAT_ASSISTANT_BUBBLE_COLOR = Color(0xFF2563EB)
-private val CHAT_USER_TEXT_COLOR = Color(0xFFE5E7EB)
+private val CHAT_CLI_BACKGROUND_COLOR = Color(0xFF0D1117)
+private val CHAT_CLI_SURFACE_COLOR = Color(0xFF161B22)
+private val CHAT_USER_COLOR = Color(0xFF3FB950)
+private val CHAT_ASSISTANT_COLOR = Color(0xFF58A6FF)
+private val CHAT_SYSTEM_COLOR = Color(0xFFF85149)
+private val CHAT_CONTENT_COLOR = Color(0xFFC9D1D9)
 private const val FILE_TREE_INDENT = "  "
 private const val FILE_TREE_DIR_ICON = "📁"
 private const val FILE_TREE_FILE_ICON = "📄"
@@ -120,6 +134,18 @@ private const val TERMINAL_PROMPT_SUFFIX = " \$ "
 private const val TERMINAL_EXECUTION_RESTORE_DELAY_MS = 1_000L
 private const val SHELL_SESSION_POLL_INTERVAL_MS = 200L
 private const val SHELL_SESSION_INACTIVE_CHECK_LIMIT = 10
+
+private val webAccessClient = OkHttpClient.Builder()
+    .connectTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
+    .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+    .writeTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+    .build()
+
+private data class PendingAction(
+    val messageId: Long,
+    val command: String,
+    val deferred: CompletableDeferred<JSONObject>
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -187,6 +213,11 @@ fun MainShellScreen(
     LaunchedEffect(Unit) {
         shellEngine.setOutputCallback { output ->
             consoleLogs.add(output)
+            if (isCapturingCommandOutput) {
+                synchronized(commandOutputLock) {
+                    commandOutputBuffer.append(output).append("\n")
+                }
+            }
         }
         startShellSession()
     }
@@ -306,37 +337,258 @@ fun MainShellScreen(
             ChatMessage(role = "assistant", content = "Welcome to TurnIt AI assistant.")
         )
     }
+    var isAgentThinking by remember { mutableStateOf(false) }
+    var pendingAction by remember { mutableStateOf<PendingAction?>(null) }
+    var currentGenerationJob by remember { mutableStateOf<Job?>(null) }
+    var consecutiveToolCalls by remember { mutableStateOf(0) }
+    var isCapturingCommandOutput by remember { mutableStateOf(false) }
+    val commandOutputBuffer = remember { StringBuilder() }
+    val commandOutputLock = remember { Any() }
     var chatInput by remember { mutableStateOf("") }
+    val stopGeneration = {
+        val action = pendingAction
+        action?.deferred?.cancel()
+        currentGenerationJob?.cancel()
+        currentGenerationJob = null
+        isAgentThinking = false
+        pendingAction = null
+        if (action != null) {
+            val pendingIndex = chatMessages.indexOfFirst { it.id == action.messageId }
+            if (pendingIndex >= 0) {
+                val message = chatMessages[pendingIndex]
+                chatMessages[pendingIndex] = message.copy(isPendingAction = false)
+            }
+        }
+        chatMessages.add(
+            ChatMessage(
+                role = "system",
+                content = "[System] Generation forcefully aborted by user."
+            )
+        )
+    }
     val sendChatPrompt = send@{
         val prompt = chatInput.trim()
         if (prompt.isBlank()) {
             return@send
         }
+        consecutiveToolCalls = 0
+        val action = pendingAction
+        if (action != null) {
+            val decision = prompt.firstOrNull()?.lowercaseChar()
+            if (decision == 'y' || decision == 'n') {
+                val feedback = prompt.drop(1).trim()
+                chatMessages.add(ChatMessage(role = "user", content = prompt))
+                chatInput = ""
+                pendingAction = null
+                val pendingIndex = chatMessages.indexOfFirst { it.id == action.messageId }
+                if (pendingIndex >= 0) {
+                    val message = chatMessages[pendingIndex]
+                    chatMessages[pendingIndex] = message.copy(isPendingAction = false)
+                }
+                scope.launch {
+                    if (decision == 'y') {
+                        val command = action.command.trim()
+                        val output = if (command.isBlank()) {
+                            "Missing command argument."
+                        } else {
+                            synchronized(commandOutputLock) {
+                                commandOutputBuffer.setLength(0)
+                            }
+                            isCapturingCommandOutput = true
+                            val submitted = runCommand(command)
+                            if (!submitted) {
+                                isCapturingCommandOutput = false
+                                "Command could not be executed."
+                            } else {
+                                delay(TERMINAL_EXECUTION_RESTORE_DELAY_MS)
+                                isCapturingCommandOutput = false
+                                synchronized(commandOutputLock) { commandOutputBuffer.toString() }.trim()
+                            }
+                        }
+                        action.deferred.complete(
+                            JSONObject()
+                                .put("status", "approved")
+                                .put("feedback", feedback)
+                                .put("output", output)
+                        )
+                    } else {
+                        action.deferred.complete(
+                            JSONObject()
+                                .put("status", "denied")
+                                .put("feedback", feedback)
+                        )
+                    }
+                }
+                return@send
+            }
+        }
         val modelSnapshot = selectedModel
         val chatHistorySnapshot = chatMessages.toList()
+        val isGeminiModel = modelSnapshot.apiUrl.contains("generativelanguage.googleapis.com", ignoreCase = true) ||
+            modelSnapshot.modelId.startsWith("gemini", ignoreCase = true)
 
         chatMessages.add(ChatMessage(role = "user", content = prompt))
         chatInput = ""
+        isAgentThinking = true
 
         val loadingBubble = ChatMessage(role = "assistant", content = "...")
         val loadingBubbleId = loadingBubble.id
         chatMessages.add(loadingBubble)
 
-        scope.launch {
+        currentGenerationJob = scope.launch {
             try {
-                val response = AiChatClient.sendMessage(
-                    model = modelSnapshot,
-                    chatHistory = chatHistorySnapshot,
-                    newPrompt = prompt
-                )
-                chatMessages.add(ChatMessage(role = "assistant", content = response))
+                val response = try {
+                    if (isGeminiModel) {
+                        if (modelSnapshot.apiKey.isBlank()) {
+                            "Error: Gemini API key is required for tool-enabled chat."
+                        } else {
+                            val geminiAgent = GeminiAgent(modelSnapshot.modelId, modelSnapshot.apiKey)
+                            val chat = geminiAgent.startChat(chatHistorySnapshot)
+                            var geminiResponse = chat.sendMessage(prompt)
+                            while (geminiResponse.functionCalls.isNotEmpty()) {
+                                consecutiveToolCalls += 1
+                                if (consecutiveToolCalls > 5) {
+                                    stopGeneration()
+                                    chatMessages.add(
+                                        ChatMessage(
+                                            role = "system",
+                                            content = "[Firewall] Agent loop limit exceeded (5+ consecutive actions). Execution halted to prevent hallucination runaway."
+                                        )
+                                    )
+                                    return@launch
+                                }
+                                val functionCall = geminiResponse.functionCalls.first()
+                                if (functionCall.name == "execute_shell_command") {
+                                    val command = extractGeminiArg(functionCall.args, "command")?.trim().orEmpty()
+                                    val firewallResult = CommandFirewall.analyzeCommand(command)
+                                    if (firewallResult is com.turnit.ide.security.FirewallResult.Blocked) {
+                                        val toolResult = JSONObject()
+                                            .put("error", "SYSTEM FIREWALL BLOCKED COMMAND: ${firewallResult.reason}")
+                                        geminiResponse = chat.sendMessage(
+                                            content("function") {
+                                                part(FunctionResponsePart(functionCall.name, toolResult))
+                                            }
+                                        )
+                                    } else {
+                                        val deferred = CompletableDeferred<JSONObject>()
+                                        val pendingMessage = ChatMessage(
+                                            role = "assistant",
+                                            content = "Command approval required.",
+                                            isPendingAction = true,
+                                            pendingCommand = command
+                                        )
+                                        chatMessages.add(pendingMessage)
+                                        pendingAction = PendingAction(
+                                            messageId = pendingMessage.id,
+                                            command = command,
+                                            deferred = deferred
+                                        )
+                                        isAgentThinking = false
+                                        val loadingBubbleIndex = chatMessages.indexOfLast { it.id == loadingBubbleId }
+                                        if (loadingBubbleIndex >= 0) {
+                                            chatMessages.removeAt(loadingBubbleIndex)
+                                        }
+                                        val toolResult = deferred.await()
+                                        isAgentThinking = true
+                                        geminiResponse = chat.sendMessage(
+                                            content("function") {
+                                                part(FunctionResponsePart(functionCall.name, toolResult))
+                                            }
+                                        )
+                                    }
+                                } else {
+                                    val functionResult = handleGeminiFunctionCall(
+                                        functionCall = functionCall,
+                                        workspaceRoot = context.filesDir,
+                                        runCommand = runCommand
+                                    )
+                                    geminiResponse = chat.sendMessage(
+                                        content("function") {
+                                            part(FunctionResponsePart(functionCall.name, functionResult))
+                                        }
+                                    )
+                                }
+                            }
+                            geminiResponse.text ?: "Error: Empty response body"
+                        }
+                    } else {
+                        AiChatClient.sendMessage(
+                            model = modelSnapshot,
+                            chatHistory = chatHistorySnapshot,
+                            newPrompt = prompt
+                        )
+                    }
+                } catch (e: CancellationException) {
+                    null
+                } catch (e: Exception) {
+                    "Error: ${e.message ?: "Unable to contact AI service"}"
+                }
+                if (!response.isNullOrBlank()) {
+                    chatMessages.add(ChatMessage(role = "assistant", content = response))
+                }
             } finally {
+                isAgentThinking = false
                 val loadingBubbleIndex = chatMessages.indexOfLast { it.id == loadingBubbleId }
                 if (loadingBubbleIndex >= 0) {
                     chatMessages.removeAt(loadingBubbleIndex)
                 }
+                currentGenerationJob = null
             }
         }
+    }
+
+    val resolvePendingAction: (Long) -> Unit = { messageId ->
+        val pendingIndex = chatMessages.indexOfFirst { it.id == messageId }
+        if (pendingIndex >= 0) {
+            val message = chatMessages[pendingIndex]
+            chatMessages[pendingIndex] = message.copy(isPendingAction = false)
+        }
+    }
+
+    val handleApproveAction: (ChatMessage) -> Unit = { message ->
+        val action = pendingAction
+        if (action == null || action.messageId != message.id) {
+            return@handleApproveAction
+        }
+        pendingAction = null
+        resolvePendingAction(message.id)
+        scope.launch {
+            val command = action.command.trim()
+            val result = if (command.isBlank()) {
+                JSONObject().put("status", "error").put("message", "Missing command argument.")
+            } else {
+                synchronized(commandOutputLock) {
+                    commandOutputBuffer.setLength(0)
+                }
+                isCapturingCommandOutput = true
+                val submitted = runCommand(command)
+                if (!submitted) {
+                    isCapturingCommandOutput = false
+                    JSONObject().put("status", "error").put("message", "Command could not be executed.")
+                } else {
+                    delay(TERMINAL_EXECUTION_RESTORE_DELAY_MS)
+                    isCapturingCommandOutput = false
+                    val outputSnapshot = synchronized(commandOutputLock) { commandOutputBuffer.toString() }
+                    JSONObject()
+                        .put("status", "success")
+                        .put("command", command)
+                        .put("output", outputSnapshot.trim())
+                }
+            }
+            action.deferred.complete(result)
+        }
+    }
+
+    val handleDenyAction: (ChatMessage) -> Unit = { message ->
+        val action = pendingAction
+        if (action == null || action.messageId != message.id) {
+            return@handleDenyAction
+        }
+        pendingAction = null
+        resolvePendingAction(message.id)
+        action.deferred.complete(
+            JSONObject().put("error", "User denied permission to run this command")
+        )
     }
 
     ModalNavigationDrawer(
@@ -358,6 +610,11 @@ fun MainShellScreen(
                         chatMessages.clear()
                         chatMessages.add(ChatMessage(role = "assistant", content = "New chat started."))
                         chatInput = ""
+                        currentGenerationJob?.cancel()
+                        currentGenerationJob = null
+                        isAgentThinking = false
+                        pendingAction = null
+                        consecutiveToolCalls = 0
                         scope.launch { drawerState.close() }
                     },
                     colors = NavigationDrawerItemDefaults.colors(
@@ -531,7 +788,11 @@ fun MainShellScreen(
                             messages = chatMessages,
                             input = chatInput,
                             onInputChange = { chatInput = it },
-                            onSend = sendChatPrompt
+                            onSend = sendChatPrompt,
+                            onStopGeneration = stopGeneration,
+                            isAgentThinking = isAgentThinking,
+                            onApproveCommand = handleApproveAction,
+                            onDenyCommand = handleDenyAction
                         )
                     }
                 }
@@ -618,10 +879,24 @@ private fun ChatPane(
     messages: List<ChatMessage>,
     input: String,
     onInputChange: (String) -> Unit,
-    onSend: () -> Unit
+    onSend: () -> Unit,
+    onStopGeneration: () -> Unit,
+    isAgentThinking: Boolean,
+    onApproveCommand: (ChatMessage) -> Unit,
+    onDenyCommand: (ChatMessage) -> Unit
 ) {
     var modelMenuOpen by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
+    val thinkingTransition = rememberInfiniteTransition(label = "thinking")
+    val thinkingAlpha by thinkingTransition.animateFloat(
+        initialValue = 0.3f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(900, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "thinking_alpha"
+    )
 
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
@@ -630,13 +905,14 @@ private fun ChatPane(
     Column(
         modifier = modifier
             .fillMaxSize()
+            .background(CHAT_CLI_BACKGROUND_COLOR)
             .padding(12.dp)
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(10.dp))
-                .background(IdeColors.Bg)
+                .background(CHAT_CLI_SURFACE_COLOR)
                 .border(1.dp, IdeColors.Border, RoundedCornerShape(10.dp))
                 .clickable { modelMenuOpen = true }
                 .padding(horizontal = 12.dp, vertical = 10.dp)
@@ -653,7 +929,12 @@ private fun ChatPane(
             ) {
                 modelOptions.forEach { model ->
                     androidx.compose.material3.DropdownMenuItem(
-                        text = { Text(model.name) },
+                        text = {
+                            Text(
+                                text = model.name,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        },
                         onClick = {
                             onModelSelected(model)
                             modelMenuOpen = false
@@ -674,29 +955,113 @@ private fun ChatPane(
         ) {
             items(messages) { message ->
                 val isUser = message.role == "user"
-                val bubbleColor = if (isUser) CHAT_USER_BUBBLE_COLOR else CHAT_ASSISTANT_BUBBLE_COLOR
-                val bubbleShape = if (isUser) {
-                    RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomEnd = 16.dp, bottomStart = 4.dp)
+                val isSystem = message.role == "system"
+                val prefix = if (isUser) {
+                    "➜ user: "
+                } else if (isSystem) {
+                    "[system]: "
                 } else {
-                    RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomEnd = 4.dp, bottomStart = 16.dp)
+                    "⚡ turnit: "
                 }
-                val textColor = if (isUser) CHAT_USER_TEXT_COLOR else Color.White
+                val prefixColor = if (isUser) {
+                    CHAT_USER_COLOR
+                } else if (isSystem) {
+                    CHAT_SYSTEM_COLOR
+                } else {
+                    CHAT_ASSISTANT_COLOR
+                }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = if (isUser) Arrangement.Start else Arrangement.End
+                    horizontalArrangement = Arrangement.Start
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .widthIn(max = CHAT_BUBBLE_MAX_WIDTH)
-                            .clip(bubbleShape)
-                            .background(bubbleColor)
-                            .padding(horizontal = 14.dp, vertical = 10.dp)
+                    Column(
+                        modifier = Modifier.widthIn(max = CHAT_BUBBLE_MAX_WIDTH),
+                        horizontalAlignment = Alignment.Start
                     ) {
-                        Text(
-                            text = message.content,
-                            color = textColor,
-                            fontSize = 12.sp
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.Top
+                        ) {
+                            Text(
+                                text = prefix,
+                                color = prefixColor,
+                                fontSize = 12.sp,
+                                fontFamily = FontFamily.Monospace
+                            )
+                            Text(
+                                text = message.content,
+                                color = CHAT_CONTENT_COLOR,
+                                fontSize = 12.sp,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                        if (!isSystem && !isUser && message.isPendingAction && !message.pendingCommand.isNullOrBlank()) {
+                            Spacer(Modifier.height(6.dp))
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(CHAT_CLI_SURFACE_COLOR)
+                                    .border(1.dp, Color(0xFF1E293B), RoundedCornerShape(8.dp))
+                                    .padding(10.dp)
+                            ) {
+                                Text(
+                                    text = message.pendingCommand,
+                                    color = Color(0xFF38BDF8),
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 11.sp
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Button(
+                                        onClick = { onApproveCommand(message) },
+                                        colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                            containerColor = IdeColors.AccentGreen
+                                        ),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Text("Approve & Run", fontFamily = FontFamily.Monospace)
+                                    }
+                                    Button(
+                                        onClick = { onDenyCommand(message) },
+                                        colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                            containerColor = IdeColors.AccentOrange
+                                        ),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Text("Deny", fontFamily = FontFamily.Monospace)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if (isAgentThinking) {
+                item {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(CHAT_CLI_SURFACE_COLOR)
+                                .border(1.dp, IdeColors.Border, RoundedCornerShape(10.dp))
+                                .padding(horizontal = 12.dp, vertical = 8.dp)
+                        ) {
+                            Text(
+                                text = "⚡ turnit: thinking...",
+                                color = CHAT_ASSISTANT_COLOR.copy(alpha = thinkingAlpha),
+                                fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
                     }
                 }
             }
@@ -717,9 +1082,15 @@ private fun ChatPane(
                 TextField(
                     value = input,
                     onValueChange = onInputChange,
-                    placeholder = { Text(CHAT_PLACEHOLDER_TEXT) },
+                    placeholder = {
+                        Text(
+                            text = CHAT_PLACEHOLDER_TEXT,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    },
                     modifier = Modifier.weight(1f),
                     singleLine = true,
+                    textStyle = TextStyle(fontFamily = FontFamily.Monospace),
                     keyboardOptions = KeyboardOptions(
                         capitalization = KeyboardCapitalization.None,
                         autoCorrect = true,
@@ -728,9 +1099,9 @@ private fun ChatPane(
                     ),
                     keyboardActions = KeyboardActions(onSend = { onSend() }),
                     colors = TextFieldDefaults.colors(
-                        focusedContainerColor = IdeColors.Bg,
-                        unfocusedContainerColor = IdeColors.Bg,
-                        disabledContainerColor = IdeColors.Bg,
+                        focusedContainerColor = CHAT_CLI_SURFACE_COLOR,
+                        unfocusedContainerColor = CHAT_CLI_SURFACE_COLOR,
+                        disabledContainerColor = CHAT_CLI_SURFACE_COLOR,
                         focusedTextColor = IdeColors.TextPrimary,
                         unfocusedTextColor = IdeColors.TextPrimary,
                         disabledTextColor = IdeColors.TextMuted,
@@ -743,12 +1114,22 @@ private fun ChatPane(
                     )
                 )
                 Spacer(Modifier.width(8.dp))
-                IconButton(onClick = onSend, enabled = input.isNotBlank()) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.Send,
-                        contentDescription = "Send",
-                        tint = if (input.isNotBlank()) IdeColors.AccentGreen else IdeColors.TextMuted
-                    )
+                if (isAgentThinking) {
+                    IconButton(onClick = onStopGeneration) {
+                        Icon(
+                            imageVector = Icons.Filled.Stop,
+                            contentDescription = "Stop responding",
+                            tint = CHAT_SYSTEM_COLOR
+                        )
+                    }
+                } else {
+                    IconButton(onClick = onSend, enabled = input.isNotBlank()) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.Send,
+                            contentDescription = "Send",
+                            tint = if (input.isNotBlank()) CHAT_USER_COLOR else IdeColors.TextMuted
+                        )
+                    }
                 }
             }
         }
@@ -1023,6 +1404,142 @@ private fun buildFileTreeEntries(root: File): List<FileTreeEntry> {
     }
     visit(root, 0)
     return items
+}
+
+private suspend fun handleGeminiFunctionCall(
+    functionCall: com.google.ai.client.generativeai.type.FunctionCall,
+    workspaceRoot: File,
+    runCommand: (String) -> Boolean
+): JSONObject {
+    val args = functionCall.args
+    return when (functionCall.name) {
+        "create_or_update_file" -> {
+            val path = extractGeminiArg(args, "path")?.trim().orEmpty()
+            val content = extractGeminiArg(args, "content").orEmpty()
+            if (path.isBlank()) {
+                JSONObject().put("status", "error").put("message", "Missing path argument.")
+            } else {
+                val targetFile = resolveWorkspaceFile(workspaceRoot, path)
+                if (targetFile == null) {
+                    JSONObject().put("status", "error").put("message", "Invalid path outside workspace.")
+                } else {
+                    try {
+                        withContext(Dispatchers.IO) {
+                            targetFile.parentFile?.mkdirs()
+                            targetFile.writeText(content)
+                        }
+                        JSONObject().put("status", "success").put("path", path)
+                    } catch (e: Exception) {
+                        JSONObject().put("status", "error").put("message", e.message ?: "Write failed.")
+                    }
+                }
+            }
+        }
+        "execute_shell_command" -> {
+            JSONObject().put("status", "error").put("message", "Command approval required.")
+        }
+        "google_search" -> {
+            val query = extractGeminiArg(args, "query")?.trim().orEmpty()
+            if (query.isBlank()) {
+                JSONObject().put("status", "error").put("message", "Missing query argument.")
+            } else {
+                performWebSearch(query)
+            }
+        }
+        "fetch_webpage" -> {
+            val url = extractGeminiArg(args, "url")?.trim().orEmpty()
+            if (url.isBlank()) {
+                JSONObject().put("status", "error").put("message", "Missing url argument.")
+            } else {
+                fetchWebpageContent(url)
+            }
+        }
+        else -> JSONObject().put("status", "error").put("message", "Unknown tool ${functionCall.name}.")
+    }
+}
+
+private fun resolveWorkspaceFile(workspaceRoot: File, relativePath: String): File? {
+    if (relativePath.isBlank() || File(relativePath).isAbsolute) {
+        return null
+    }
+    return try {
+        val canonicalRoot = workspaceRoot.canonicalFile
+        val canonicalTarget = File(canonicalRoot, relativePath).canonicalFile
+        val rootPath = canonicalRoot.path.trimEnd(File.separatorChar) + File.separator
+        if (!canonicalTarget.path.startsWith(rootPath)) {
+            null
+        } else {
+            canonicalTarget
+        }
+    } catch (_: Exception) {
+        null
+    }
+}
+
+private fun extractGeminiArg(args: Map<String, Any?>, key: String): String? {
+    val raw = args[key] ?: return null
+    if (raw is String) {
+        return raw
+    }
+    val value = raw.toString().trim()
+    return if (value.length >= 2 && value.startsWith("\"") && value.endsWith("\"")) {
+        value.substring(1, value.length - 1)
+    } else {
+        value
+    }
+}
+
+private suspend fun performWebSearch(query: String): JSONObject {
+    val encodedQuery = URLEncoder.encode(query, Charsets.UTF_8.name())
+    val searchUrl = "https://www.google.com/search?q=$encodedQuery&hl=en&num=5"
+    return fetchWebpageContent(searchUrl).also { result ->
+        if (result.optString("status") == "success") {
+            val content = result.optString("content")
+            result.remove("content")
+            result.put("results", content)
+            result.put("query", query)
+        }
+    }
+}
+
+private suspend fun fetchWebpageContent(url: String): JSONObject {
+    if (!isHttpUrl(url)) {
+        return JSONObject().put("status", "error").put("message", "Only http/https URLs are supported.")
+    }
+    return withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url(url)
+            .get()
+            .header("User-Agent", "TurnItIDE/1.0")
+            .build()
+        try {
+            webAccessClient.newCall(request).execute().use { response ->
+                val body = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    JSONObject()
+                        .put("status", "error")
+                        .put("message", "HTTP ${response.code} ${response.message}")
+                } else {
+                    JSONObject()
+                        .put("status", "success")
+                        .put("content", body)
+                        .put("url", url)
+                }
+            }
+        } catch (e: Exception) {
+            JSONObject().put("status", "error").put("message", e.message ?: "Request failed.")
+        }
+    }
+}
+
+private fun isHttpUrl(url: String): Boolean {
+    return try {
+        val parsed = Uri.parse(url)
+        parsed.scheme?.equals("http", ignoreCase = true) == true ||
+            parsed.scheme?.equals("https", ignoreCase = true) == true
+    } catch (_: Exception) {
+        false
+    }
 }
 
 @Composable
