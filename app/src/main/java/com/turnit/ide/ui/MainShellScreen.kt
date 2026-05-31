@@ -90,8 +90,10 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.google.ai.client.generativeai.type.FunctionCall
+import com.google.ai.client.generativeai.type.FunctionCallPart
 import com.google.ai.client.generativeai.type.FunctionResponsePart
+import com.google.ai.client.generativeai.type.Part
+import com.google.ai.client.generativeai.type.TextPart
 import com.google.ai.client.generativeai.type.content
 import com.google.ai.client.generativeai.type.text
 import com.turnit.ide.R
@@ -447,7 +449,15 @@ fun MainShellScreen(
                             val geminiAgent = GeminiAgent(modelSnapshot.modelId, modelSnapshot.apiKey)
                             val chat = geminiAgent.startChat(chatHistorySnapshot)
                             var geminiResponse = chat.sendMessage(prompt)
-                            while (geminiResponse.functionCalls.isNotEmpty()) {
+                            var responseParts: List<Part> = geminiResponse.candidates
+                                .firstOrNull()
+                                ?.content
+                                ?.parts
+                                .orEmpty()
+                            var functionCalls = responseParts.mapNotNull { part ->
+                                part as? FunctionCallPart
+                            }
+                            while (functionCalls.isNotEmpty()) {
                                 consecutiveToolCalls += 1
                                 if (consecutiveToolCalls > 5) {
                                     stopGeneration()
@@ -459,7 +469,7 @@ fun MainShellScreen(
                                     )
                                     return@launch
                                 }
-                                val functionCall = geminiResponse.functionCalls.first()
+                                val functionCall = functionCalls.first()
                                 if (functionCall.name == "execute_shell_command") {
                                     val command = extractGeminiArg(functionCall.args, "command")?.trim().orEmpty()
                                     val firewallResult = CommandFirewall.analyzeCommand(command)
@@ -498,6 +508,14 @@ fun MainShellScreen(
                                             }
                                         )
                                     }
+                                    responseParts = geminiResponse.candidates
+                                        .firstOrNull()
+                                        ?.content
+                                        ?.parts
+                                        .orEmpty()
+                                    functionCalls = responseParts.mapNotNull { part ->
+                                        part as? FunctionCallPart
+                                    }
                                 } else {
                                     val functionResult = handleGeminiFunctionCall(
                                         functionCall = functionCall,
@@ -509,9 +527,21 @@ fun MainShellScreen(
                                             part(FunctionResponsePart(functionCall.name, functionResult))
                                         }
                                     )
+                                    responseParts = geminiResponse.candidates
+                                        .firstOrNull()
+                                        ?.content
+                                        ?.parts
+                                        .orEmpty()
+                                    functionCalls = responseParts.mapNotNull { part ->
+                                        part as? FunctionCallPart
+                                    }
                                 }
                             }
-                            geminiResponse.text ?: "Error: Empty response body"
+                            responseParts
+                                .mapNotNull { part -> (part as? TextPart)?.text }
+                                .joinToString("")
+                                .ifBlank { null }
+                                ?: "Error: Empty response body"
                         }
                     } else {
                         AiChatClient.sendMessage(
@@ -1407,7 +1437,7 @@ private fun buildFileTreeEntries(root: File): List<FileTreeEntry> {
 }
 
 private suspend fun handleGeminiFunctionCall(
-    functionCall: FunctionCall,
+    functionCall: FunctionCallPart,
     workspaceRoot: File,
     runCommand: (String) -> Boolean
 ): JSONObject {
