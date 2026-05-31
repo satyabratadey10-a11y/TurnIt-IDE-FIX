@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PostAdd
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -101,6 +102,7 @@ import com.turnit.ide.security.CommandFirewall
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -119,9 +121,12 @@ private const val CHAT_SPLIT_MAX_WEIGHT = 0.85f
 private val CHAT_SPLITTER_WIDTH = 8.dp
 private val CHAT_SPLITTER_COLOR = IdeColors.Border
 private val CHAT_BUBBLE_MAX_WIDTH = 280.dp
-private val CHAT_USER_BUBBLE_COLOR = Color(0xFF1F2937)
-private val CHAT_ASSISTANT_BUBBLE_COLOR = Color(0xFF2563EB)
-private val CHAT_USER_TEXT_COLOR = Color(0xFFE5E7EB)
+private val CHAT_CLI_BACKGROUND_COLOR = Color(0xFF0D1117)
+private val CHAT_CLI_SURFACE_COLOR = Color(0xFF161B22)
+private val CHAT_USER_COLOR = Color(0xFF3FB950)
+private val CHAT_ASSISTANT_COLOR = Color(0xFF58A6FF)
+private val CHAT_SYSTEM_COLOR = Color(0xFFF85149)
+private val CHAT_CONTENT_COLOR = Color(0xFFC9D1D9)
 private const val FILE_TREE_INDENT = "  "
 private const val FILE_TREE_DIR_ICON = "📁"
 private const val FILE_TREE_FILE_ICON = "📄"
@@ -334,15 +339,39 @@ fun MainShellScreen(
     }
     var isAgentThinking by remember { mutableStateOf(false) }
     var pendingAction by remember { mutableStateOf<PendingAction?>(null) }
+    var currentGenerationJob by remember { mutableStateOf<Job?>(null) }
+    var consecutiveToolCalls by remember { mutableStateOf(0) }
     var isCapturingCommandOutput by remember { mutableStateOf(false) }
     val commandOutputBuffer = remember { StringBuilder() }
     val commandOutputLock = remember { Any() }
     var chatInput by remember { mutableStateOf("") }
+    val stopGeneration = {
+        val action = pendingAction
+        action?.deferred?.cancel()
+        currentGenerationJob?.cancel()
+        currentGenerationJob = null
+        isAgentThinking = false
+        pendingAction = null
+        if (action != null) {
+            val pendingIndex = chatMessages.indexOfFirst { it.id == action.messageId }
+            if (pendingIndex >= 0) {
+                val message = chatMessages[pendingIndex]
+                chatMessages[pendingIndex] = message.copy(isPendingAction = false)
+            }
+        }
+        chatMessages.add(
+            ChatMessage(
+                role = "system",
+                content = "[System] Generation forcefully aborted by user."
+            )
+        )
+    }
     val sendChatPrompt = send@{
         val prompt = chatInput.trim()
         if (prompt.isBlank()) {
             return@send
         }
+        consecutiveToolCalls = 0
         val action = pendingAction
         if (action != null) {
             val decision = prompt.firstOrNull()?.lowercaseChar()
@@ -406,7 +435,7 @@ fun MainShellScreen(
         val loadingBubbleId = loadingBubble.id
         chatMessages.add(loadingBubble)
 
-        scope.launch {
+        currentGenerationJob = scope.launch {
             try {
                 val response = try {
                     if (isGeminiModel) {
@@ -417,6 +446,17 @@ fun MainShellScreen(
                             val chat = geminiAgent.startChat(chatHistorySnapshot)
                             var geminiResponse = chat.sendMessage(prompt)
                             while (geminiResponse.functionCalls.isNotEmpty()) {
+                                consecutiveToolCalls += 1
+                                if (consecutiveToolCalls > 5) {
+                                    stopGeneration()
+                                    chatMessages.add(
+                                        ChatMessage(
+                                            role = "system",
+                                            content = "[Firewall] Agent loop limit exceeded (5+ consecutive actions). Execution halted to prevent hallucination runaway."
+                                        )
+                                    )
+                                    break
+                                }
                                 val functionCall = geminiResponse.functionCalls.first()
                                 if (functionCall.name == "execute_shell_command") {
                                     val command = extractGeminiArg(functionCall.args, "command")?.trim().orEmpty()
@@ -478,15 +518,22 @@ fun MainShellScreen(
                             newPrompt = prompt
                         )
                     }
+                } catch (e: CancellationException) {
+                    null
                 } catch (e: Exception) {
                     "Error: ${e.message ?: "Unable to contact AI service"}"
                 }
-                chatMessages.add(ChatMessage(role = "assistant", content = response))
+                if (!response.isNullOrBlank()) {
+                    chatMessages.add(ChatMessage(role = "assistant", content = response))
+                }
             } finally {
                 isAgentThinking = false
                 val loadingBubbleIndex = chatMessages.indexOfLast { it.id == loadingBubbleId }
                 if (loadingBubbleIndex >= 0) {
                     chatMessages.removeAt(loadingBubbleIndex)
+                }
+                if (currentGenerationJob?.isActive != true) {
+                    currentGenerationJob = null
                 }
             }
         }
@@ -565,8 +612,11 @@ fun MainShellScreen(
                         chatMessages.clear()
                         chatMessages.add(ChatMessage(role = "assistant", content = "New chat started."))
                         chatInput = ""
+                        currentGenerationJob?.cancel()
+                        currentGenerationJob = null
                         isAgentThinking = false
                         pendingAction = null
+                        consecutiveToolCalls = 0
                         scope.launch { drawerState.close() }
                     },
                     colors = NavigationDrawerItemDefaults.colors(
@@ -741,6 +791,7 @@ fun MainShellScreen(
                             input = chatInput,
                             onInputChange = { chatInput = it },
                             onSend = sendChatPrompt,
+                            onStopGeneration = stopGeneration,
                             isAgentThinking = isAgentThinking,
                             onApproveCommand = handleApproveAction,
                             onDenyCommand = handleDenyAction
@@ -831,6 +882,7 @@ private fun ChatPane(
     input: String,
     onInputChange: (String) -> Unit,
     onSend: () -> Unit,
+    onStopGeneration: () -> Unit,
     isAgentThinking: Boolean,
     onApproveCommand: (ChatMessage) -> Unit,
     onDenyCommand: (ChatMessage) -> Unit
@@ -855,13 +907,14 @@ private fun ChatPane(
     Column(
         modifier = modifier
             .fillMaxSize()
+            .background(CHAT_CLI_BACKGROUND_COLOR)
             .padding(12.dp)
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(10.dp))
-                .background(IdeColors.Bg)
+                .background(CHAT_CLI_SURFACE_COLOR)
                 .border(1.dp, IdeColors.Border, RoundedCornerShape(10.dp))
                 .clickable { modelMenuOpen = true }
                 .padding(horizontal = 12.dp, vertical = 10.dp)
@@ -878,7 +931,12 @@ private fun ChatPane(
             ) {
                 modelOptions.forEach { model ->
                     androidx.compose.material3.DropdownMenuItem(
-                        text = { Text(model.name) },
+                        text = {
+                            Text(
+                                text = model.name,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        },
                         onClick = {
                             onModelSelected(model)
                             modelMenuOpen = false
@@ -899,40 +957,53 @@ private fun ChatPane(
         ) {
             items(messages) { message ->
                 val isUser = message.role == "user"
-                val bubbleColor = if (isUser) CHAT_USER_BUBBLE_COLOR else CHAT_ASSISTANT_BUBBLE_COLOR
-                val bubbleShape = if (isUser) {
-                    RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomEnd = 16.dp, bottomStart = 4.dp)
+                val isSystem = message.role == "system"
+                val prefix = if (isUser) {
+                    "➜ user: "
+                } else if (isSystem) {
+                    "[system]: "
                 } else {
-                    RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomEnd = 4.dp, bottomStart = 16.dp)
+                    "⚡ turnit: "
                 }
-                val textColor = if (isUser) CHAT_USER_TEXT_COLOR else Color.White
+                val prefixColor = if (isUser) {
+                    CHAT_USER_COLOR
+                } else if (isSystem) {
+                    CHAT_SYSTEM_COLOR
+                } else {
+                    CHAT_ASSISTANT_COLOR
+                }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = if (isUser) Arrangement.Start else Arrangement.End
+                    horizontalArrangement = Arrangement.Start
                 ) {
                     Column(
                         modifier = Modifier.widthIn(max = CHAT_BUBBLE_MAX_WIDTH),
-                        horizontalAlignment = if (isUser) Alignment.Start else Alignment.End
+                        horizontalAlignment = Alignment.Start
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .clip(bubbleShape)
-                                .background(bubbleColor)
-                                .padding(horizontal = 14.dp, vertical = 10.dp)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.Top
                         ) {
                             Text(
+                                text = prefix,
+                                color = prefixColor,
+                                fontSize = 12.sp,
+                                fontFamily = FontFamily.Monospace
+                            )
+                            Text(
                                 text = message.content,
-                                color = textColor,
-                                fontSize = 12.sp
+                                color = CHAT_CONTENT_COLOR,
+                                fontSize = 12.sp,
+                                fontFamily = FontFamily.Monospace
                             )
                         }
-                        if (!isUser && message.isPendingAction && !message.pendingCommand.isNullOrBlank()) {
+                        if (!isSystem && !isUser && message.isPendingAction && !message.pendingCommand.isNullOrBlank()) {
                             Spacer(Modifier.height(6.dp))
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(8.dp))
-                                    .background(Color(0xFF0F172A))
+                                    .background(CHAT_CLI_SURFACE_COLOR)
                                     .border(1.dp, Color(0xFF1E293B), RoundedCornerShape(8.dp))
                                     .padding(10.dp)
                             ) {
@@ -954,7 +1025,7 @@ private fun ChatPane(
                                         ),
                                         modifier = Modifier.weight(1f)
                                     ) {
-                                        Text("Approve & Run")
+                                        Text("Approve & Run", fontFamily = FontFamily.Monospace)
                                     }
                                     Button(
                                         onClick = { onDenyCommand(message) },
@@ -963,7 +1034,7 @@ private fun ChatPane(
                                         ),
                                         modifier = Modifier.weight(1f)
                                     ) {
-                                        Text("Deny")
+                                        Text("Deny", fontFamily = FontFamily.Monospace)
                                     }
                                 }
                             }
@@ -982,13 +1053,13 @@ private fun ChatPane(
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(10.dp))
-                                .background(IdeColors.BgSurface)
+                                .background(CHAT_CLI_SURFACE_COLOR)
                                 .border(1.dp, IdeColors.Border, RoundedCornerShape(10.dp))
                                 .padding(horizontal = 12.dp, vertical = 8.dp)
                         ) {
                             Text(
-                                text = "Agent is thinking...",
-                                color = IdeColors.TextMuted.copy(alpha = thinkingAlpha),
+                                text = "⚡ turnit: thinking...",
+                                color = CHAT_ASSISTANT_COLOR.copy(alpha = thinkingAlpha),
                                 fontSize = 11.sp,
                                 fontFamily = FontFamily.Monospace
                             )
@@ -1013,9 +1084,15 @@ private fun ChatPane(
                 TextField(
                     value = input,
                     onValueChange = onInputChange,
-                    placeholder = { Text(CHAT_PLACEHOLDER_TEXT) },
+                    placeholder = {
+                        Text(
+                            text = CHAT_PLACEHOLDER_TEXT,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    },
                     modifier = Modifier.weight(1f),
                     singleLine = true,
+                    textStyle = TextStyle(fontFamily = FontFamily.Monospace),
                     keyboardOptions = KeyboardOptions(
                         capitalization = KeyboardCapitalization.None,
                         autoCorrect = true,
@@ -1024,9 +1101,9 @@ private fun ChatPane(
                     ),
                     keyboardActions = KeyboardActions(onSend = { onSend() }),
                     colors = TextFieldDefaults.colors(
-                        focusedContainerColor = IdeColors.Bg,
-                        unfocusedContainerColor = IdeColors.Bg,
-                        disabledContainerColor = IdeColors.Bg,
+                        focusedContainerColor = CHAT_CLI_SURFACE_COLOR,
+                        unfocusedContainerColor = CHAT_CLI_SURFACE_COLOR,
+                        disabledContainerColor = CHAT_CLI_SURFACE_COLOR,
                         focusedTextColor = IdeColors.TextPrimary,
                         unfocusedTextColor = IdeColors.TextPrimary,
                         disabledTextColor = IdeColors.TextMuted,
@@ -1039,12 +1116,22 @@ private fun ChatPane(
                     )
                 )
                 Spacer(Modifier.width(8.dp))
-                IconButton(onClick = onSend, enabled = input.isNotBlank()) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.Send,
-                        contentDescription = "Send",
-                        tint = if (input.isNotBlank()) IdeColors.AccentGreen else IdeColors.TextMuted
-                    )
+                if (isAgentThinking) {
+                    IconButton(onClick = onStopGeneration) {
+                        Icon(
+                            imageVector = Icons.Filled.Stop,
+                            contentDescription = "Stop responding",
+                            tint = CHAT_SYSTEM_COLOR
+                        )
+                    }
+                } else {
+                    IconButton(onClick = onSend, enabled = input.isNotBlank()) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.Send,
+                            contentDescription = "Send",
+                            tint = if (input.isNotBlank()) CHAT_USER_COLOR else IdeColors.TextMuted
+                        )
+                    }
                 }
             }
         }
