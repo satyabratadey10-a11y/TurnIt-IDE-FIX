@@ -621,6 +621,7 @@ fun MainShellScreen(
     }
 
     ModalNavigationDrawer(
+        modifier = Modifier.fillMaxSize(),
         drawerState = drawerState,
         drawerContent = {
             ModalDrawerSheet(
@@ -993,11 +994,11 @@ private fun ChatPane(
                     "⚡ turnit: "
                 }
                 val prefixColor = if (isUser) {
-                    CHAT_USER_COLOR
+                    Color.Green
                 } else if (isSystem) {
                     CHAT_SYSTEM_COLOR
                 } else {
-                    CHAT_ASSISTANT_COLOR
+                    Color.Cyan
                 }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -1105,7 +1106,8 @@ private fun ChatPane(
         ) {
             Row(
                 modifier = Modifier
-                    .fillMaxWidth(),
+                    .fillMaxWidth()
+                    .padding(vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 TextField(
@@ -1119,7 +1121,10 @@ private fun ChatPane(
                     },
                     modifier = Modifier.weight(1f),
                     singleLine = true,
-                    textStyle = TextStyle(fontFamily = FontFamily.Monospace),
+                    textStyle = TextStyle(
+                        fontFamily = FontFamily.Monospace,
+                        color = Color.White
+                    ),
                     keyboardOptions = KeyboardOptions(
                         capitalization = KeyboardCapitalization.None,
                         autoCorrect = true,
@@ -1131,15 +1136,15 @@ private fun ChatPane(
                         focusedContainerColor = CHAT_CLI_SURFACE_COLOR,
                         unfocusedContainerColor = CHAT_CLI_SURFACE_COLOR,
                         disabledContainerColor = CHAT_CLI_SURFACE_COLOR,
-                        focusedTextColor = IdeColors.TextPrimary,
-                        unfocusedTextColor = IdeColors.TextPrimary,
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
                         disabledTextColor = IdeColors.TextMuted,
                         focusedPlaceholderColor = IdeColors.TextMuted,
                         unfocusedPlaceholderColor = IdeColors.TextMuted,
                         disabledPlaceholderColor = IdeColors.TextMuted,
                         focusedIndicatorColor = Color.Transparent,
                         unfocusedIndicatorColor = Color.Transparent,
-                        cursorColor = IdeColors.TextPrimary
+                        cursorColor = Color.White
                     )
                 )
                 Spacer(Modifier.width(8.dp))
