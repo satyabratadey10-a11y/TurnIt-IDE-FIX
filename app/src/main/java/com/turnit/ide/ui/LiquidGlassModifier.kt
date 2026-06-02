@@ -25,7 +25,7 @@ private const val VIGNETTE_BOOST = 0.08f
 private const val ANIMATION_DURATION_MS = 6000
 
 const val LIQUID_GLASS_SHADER = """
-uniform shader input;
+uniform shader contents;
 uniform float2 resolution;
 uniform float time;
 uniform float waveFrequency;
@@ -38,7 +38,7 @@ half4 main(float2 fragCoord) {
     float waveX = sin((uv.y + time) * waveFrequency) * waveAmplitude;
     float waveY = cos((uv.x + time) * waveFrequency) * waveAmplitude;
     float2 distorted = fragCoord + float2(waveX, waveY);
-    half4 color = input.eval(distorted);
+    half4 color = contents.eval(distorted);
     float vignette = smoothstep(0.85, 0.25, distance(uv, float2(0.5, 0.5)));
     color.rgb += vignetteBoost * vignette;
     return color;
@@ -57,7 +57,7 @@ fun Modifier.liquidGlassBackground(
         shader.setFloatUniform("waveFrequency", WAVE_FREQUENCY)
         shader.setFloatUniform("waveAmplitude", WAVE_AMPLITUDE)
         shader.setFloatUniform("vignetteBoost", VIGNETTE_BOOST)
-        RenderEffect.createRuntimeShaderEffect(shader, "input")
+        RenderEffect.createRuntimeShaderEffect(shader, "contents")
     }
     val composeEffect = remember(runtimeEffect) { runtimeEffect.asComposeRenderEffect() }
     val transition = rememberInfiniteTransition(label = "liquid_glass_transition")
