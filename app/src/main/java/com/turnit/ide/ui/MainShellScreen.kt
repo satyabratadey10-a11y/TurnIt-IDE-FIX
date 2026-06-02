@@ -95,7 +95,6 @@ import com.google.ai.client.generativeai.type.FunctionResponsePart
 import com.google.ai.client.generativeai.type.Part
 import com.google.ai.client.generativeai.type.TextPart
 import com.google.ai.client.generativeai.type.content
-import com.google.ai.client.generativeai.type.text
 import com.turnit.ide.R
 import com.turnit.ide.ai.AiModel
 import com.turnit.ide.ai.AiChatClient
