@@ -1121,10 +1121,7 @@ private fun ChatPane(
                     },
                     modifier = Modifier.weight(1f),
                     singleLine = true,
-                    textStyle = TextStyle(
-                        fontFamily = FontFamily.Monospace,
-                        color = Color.White
-                    ),
+                    textStyle = TextStyle(fontFamily = FontFamily.Monospace),
                     keyboardOptions = KeyboardOptions(
                         capitalization = KeyboardCapitalization.None,
                         autoCorrect = true,
